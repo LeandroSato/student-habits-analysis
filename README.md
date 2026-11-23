@@ -76,6 +76,9 @@ o mesmo tratamento alimenta o relatório e o Streamlit, sem código duplicado.
 | 2. Engenharia de dados (cada decisão com o motivo) | [reports/02_engenharia.md](reports/02_engenharia.md) |
 | 3. Análise estatística e ranking de influência | [reports/03_estatistica.md](reports/03_estatistica.md) |
 | 4. Modelo e simulador: que decisão apoia | [reports/04_modelo.md](reports/04_modelo.md) |
+| 5. Visualização, com a leitura de cada gráfico | [reports/05_visualizacao.md](reports/05_visualizacao.md) |
+
+![Horas de estudo contra nota, em dispersão e por faixa](reports/figures/02_variavel_de_maior_impacto.png)
 
 ## Principais conclusões
 

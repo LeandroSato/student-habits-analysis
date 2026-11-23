@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd  # noqa: E402
 
-from src import cleaning, config, features, model, profiling  # noqa: E402
+from src import cleaning, config, features, model, plots, profiling  # noqa: E402
 from src import stats_analysis as sa  # noqa: E402
 from src.data_loading import categorical_columns, load_raw, numeric_columns  # noqa: E402
 from src.reporting import markdown_table, write_report  # noqa: E402
@@ -1003,6 +1003,196 @@ def etapa_4_modelo(df: pd.DataFrame) -> Path:
     return destino
 
 
+def _figura(destino: Path, alt: str) -> str:
+    """Markdown de uma figura, com caminho relativo à pasta reports/."""
+    caminho = destino.relative_to(config.REPORTS_DIR).as_posix()
+    return f"![{alt}]({caminho})"
+
+
+def etapa_5_visualizacao(df: pd.DataFrame) -> Path:
+    matriz = sa.correlation_matrix(df)
+    ajustado = model.train(df)
+    coefs = model.coefficient_table(ajustado)
+
+    mapa = plots.plot_correlation_heatmap(matriz)
+    impacto = plots.plot_top_variable(
+        df, coluna="study_hours_per_day", faixa="faixa_estudo"
+    )
+    redes = plots.plot_score_by_bin(
+        df,
+        faixa="faixa_redes_sociais",
+        titulo="Nota por faixa de tempo em redes sociais",
+        nome_arquivo="03_nota_por_faixa_de_redes.png",
+    )
+    saude = plots.plot_score_by_bin(
+        df,
+        faixa="faixa_saude_mental",
+        titulo="Nota por faixa de saúde mental autodeclarada",
+        nome_arquivo="04_nota_por_faixa_de_saude_mental.png",
+    )
+    distribuicao = plots.plot_score_distribution(df)
+    pesos = plots.plot_model_coefficients(coefs)
+
+    # Números citados no texto, todos tirados do próprio DataFrame.
+    ranking = sa.influence_ranking(df)
+    top = ranking.iloc[0]
+    medias_estudo = df.groupby("faixa_estudo", observed=True)[config.TARGET].mean()
+    medias_redes = df.groupby("faixa_redes_sociais", observed=True)[config.TARGET].mean()
+    medias_saude = df.groupby("faixa_saude_mental", observed=True)[config.TARGET].mean()
+    extremos = profiling.extreme_value_concentration(df, config.TARGET)
+
+    def _faixa_extremos(medias: pd.Series) -> str:
+        return (
+            f"{medias.index[0]}: {medias.iloc[0]:.1f} · "
+            f"{medias.index[-1]}: {medias.iloc[-1]:.1f} "
+            f"(diferença de {abs(medias.iloc[-1] - medias.iloc[0]):.1f} pontos)"
+        )
+
+    destino = config.REPORTS_DIR / "05_visualizacao.md"
+    write_report(
+        destino,
+        "5. Visualização",
+        [
+            "Gerado por `analysis/run_analysis.py`. As figuras ficam em "
+            "`reports/figures/` e são regeradas a cada execução.",
+            AVISO_CAUSA,
+            "\n".join(
+                [
+                    "## 5.1 Mapa de calor das correlações",
+                    "",
+                    _figura(mapa, "Mapa de calor das correlações entre hábitos e nota"),
+                    "",
+                    "Escala divergente com cinza no meio, porque correlação tem "
+                    "polaridade: azul para quem anda junto, vermelho para quem anda "
+                    "ao contrário, e o cinza marca o zero. Só o triângulo inferior — "
+                    "a matriz é simétrica e repetir a metade de cima dobraria a tinta "
+                    "sem acrescentar informação.",
+                    "",
+                    "**O que ler aqui:** a última linha é a que importa, e nela "
+                    f"{_cod(top['variavel'])} se destaca sozinha (r = "
+                    f"{top['r_pearson']}). O resto do mapa serve para ver que os "
+                    "hábitos quase não se correlacionam entre si — exceto os pares "
+                    "redundantes por construção já discutidos na tarefa 3, que por "
+                    "isso ficaram fora do modelo.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.2 A variável de maior impacto, em detalhe",
+                    "",
+                    _figura(impacto, "Horas de estudo contra nota, em dispersão e por faixa"),
+                    "",
+                    "Dois ângulos da mesma variável, de propósito. **À esquerda**, "
+                    "cada aluno e a reta de tendência: mostra a dispersão real, que "
+                    "uma média por faixa esconde — há alunos de 2h com nota alta e "
+                    "alunos de 6h com nota média. **À direita**, a mesma relação por "
+                    "faixa, que é como a conclusão vai ser contada para quem decide.",
+                    "",
+                    "**O que ler aqui:** " + _faixa_extremos(medias_estudo) + ". A "
+                    "subida é consistente faixa a faixa, não um salto num extremo só. "
+                    "A dispersão à esquerda é o lembrete de que isso é tendência de "
+                    "grupo, não destino de aluno.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.3 Nota por faixa de redes sociais",
+                    "",
+                    _figura(redes, "Boxplot da nota por faixa de tempo em redes sociais"),
+                    "",
+                    "Boxplot em vez de barra de média: a caixa mostra a mediana e "
+                    "onde está a metade central dos alunos, e deixa ver que as faixas "
+                    "se sobrepõem bastante. O tamanho de cada grupo vai no eixo, "
+                    "porque caixa de grupo pequeno não merece a mesma confiança e "
+                    "sem o número elas parecem iguais.",
+                    "",
+                    "**O que ler aqui:** " + _faixa_extremos(medias_redes) + ". A "
+                    "descida existe e é consistente, mas as caixas se sobrepõem — "
+                    "tempo de rede social separa menos os alunos do que horas de "
+                    "estudo, e o gráfico mostra isso melhor do que o número sozinho.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.4 Nota por faixa de saúde mental",
+                    "",
+                    _figura(saude, "Boxplot da nota por faixa de saúde mental autodeclarada"),
+                    "",
+                    "A única diferença entre grupos que sobreviveu à correção de "
+                    "Holm na tarefa 3, então merece figura própria.",
+                    "",
+                    "**O que ler aqui:** " + _faixa_extremos(medias_saude) + ". "
+                    "Importante: a escala é autodeclarada e medida junto com a nota. "
+                    "Ir mal na prova pode afetar como o aluno avalia a própria saúde "
+                    "mental, então o sentido da relação não é testável com este dado.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.5 A distribuição da nota, e o teto",
+                    "",
+                    _figura(distribuicao, "Histograma da nota com o acúmulo no valor máximo"),
+                    "",
+                    "Esta figura existe para tornar visível um problema que é fácil "
+                    "de ignorar numa tabela.",
+                    "",
+                    f"**O que ler aqui:** a barra colada em {extremos['valor_maximo']:.0f} "
+                    f"são {extremos['n_no_maximo']} alunos "
+                    f"({extremos['pct_no_maximo']}%) com a nota máxima. É o efeito "
+                    "teto: acima disso a nota não existe, o modelo subestima esse "
+                    "grupo e a previsão precisa ser truncada.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.6 Peso de cada hábito no modelo",
+                    "",
+                    _figura(pesos, "Barras divergentes com o peso de cada hábito no modelo"),
+                    "",
+                    "Em pontos por **desvio padrão**, não por hora: é o único jeito "
+                    "honesto de comparar hábitos de unidades diferentes numa figura "
+                    "só. Azul puxa a nota para cima, vermelho para baixo — e o sinal "
+                    "está também no número ao lado da barra, para que a cor não seja "
+                    "o único canal de leitura.",
+                    "",
+                    "**O que ler aqui:** o peso de horas de estudo não tem "
+                    "concorrência. Esta é a figura para levar a uma reunião quando a "
+                    "pergunta for “onde a gente mexe primeiro?”.",
+                ]
+            ),
+            "\n".join(
+                [
+                    "## 5.7 Decisões de visualização",
+                    "",
+                    "| Decisão | Por quê |",
+                    "|---|---|",
+                    "| matplotlib/seaborn nos relatórios, Altair no app | O README "
+                    "precisa de PNG que apareça no GitHub sem servidor; o app precisa "
+                    "de gráfico interativo. |",
+                    "| Divergente só no mapa de calor | Correlação tem polaridade "
+                    "(-1 a +1) e pede dois tons opostos com neutro no meio. Onde há "
+                    "grandeza sem polaridade, uma cor só. |",
+                    "| Nada de arco-íris | Matiz variável sugere categoria onde "
+                    "existe número contínuo, e inventa fronteiras que o dado não tem. |",
+                    "| Uma série, nenhuma legenda | O título já nomeia o que está "
+                    "desenhado; caixa de legenda seria ruído. |",
+                    "| Grade e eixos em tom fraco | A grade é referência, não "
+                    "conteúdo: os dados têm de ser a coisa mais escura da figura. |",
+                    "| Eixo da nota fixo em 0–100 em todas as figuras | Deixar cada "
+                    "gráfico escolher sua escala faria diferenças pequenas parecerem "
+                    "grandes. |",
+                    "| n de cada grupo no rótulo dos boxplots | Caixa de 26 alunos e "
+                    "caixa de 382 não merecem a mesma confiança. |",
+                    "| Cor nunca sozinha | Onde a cor marca direção, o sinal aparece "
+                    "também no número — leitura não depende de enxergar a diferença "
+                    "entre azul e vermelho. |",
+                ]
+            ),
+        ],
+    )
+    return destino
+
+
 def main() -> None:
     df = load_raw()
     print(f"Base carregada: {len(df)} linhas x {len(df.columns)} colunas")
@@ -1018,6 +1208,9 @@ def main() -> None:
 
     destino = etapa_4_modelo(com_features)
     print(f"Etapa 4 (modelo)      -> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    destino = etapa_5_visualizacao(com_features)
+    print(f"Etapa 5 (visualizacao)-> {destino.relative_to(config.PROJECT_ROOT)}")
 
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     base_tratada = config.PROCESSED_DIR / "alunos_tratados.csv"
