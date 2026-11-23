@@ -178,6 +178,42 @@ def daily_hours_check(
     }
 
 
+def missingness_check(df: pd.DataFrame, col: str, target: str = config.TARGET) -> dict:
+    """A ausência em `col` tem relação com o alvo?
+
+    Pergunta que decide o tratamento: se quem não informou tiver nota diferente
+    de quem informou, descartar essas linhas enviesa a análise e preencher pela
+    moda esconde um sinal. O teste é o de Mann-Whitney (não paramétrico), que
+    não exige distribuição normal nem variância igual entre os dois grupos.
+    """
+    from scipy import stats
+
+    ausente = df.loc[df[col].isna(), target].dropna()
+    presente = df.loc[df[col].notna(), target].dropna()
+
+    if len(ausente) == 0 or len(presente) == 0:
+        return {
+            "coluna": col,
+            "n_ausente": len(ausente),
+            "n_presente": len(presente),
+            "media_ausente": None,
+            "media_presente": None,
+            "diferenca": None,
+            "p_valor": None,
+        }
+
+    teste = stats.mannwhitneyu(ausente, presente)
+    return {
+        "coluna": col,
+        "n_ausente": int(len(ausente)),
+        "n_presente": int(len(presente)),
+        "media_ausente": round(float(ausente.mean()), 2),
+        "media_presente": round(float(presente.mean()), 2),
+        "diferenca": round(float(ausente.mean() - presente.mean()), 2),
+        "p_valor": round(float(teste.pvalue), 4),
+    }
+
+
 def extreme_value_concentration(
     df: pd.DataFrame, col: str = config.TARGET
 ) -> dict:

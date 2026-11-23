@@ -103,3 +103,33 @@ def test_markdown_table_marca_ausente_com_travessao():
     tabela = markdown_table(pd.DataFrame({"a": [1.0, float("nan")]}))
 
     assert tabela.splitlines()[-1] == "| — |"
+
+
+def test_missingness_check_acusa_ausencia_ligada_ao_alvo():
+    df = pd.DataFrame(
+        {
+            "escolaridade": [None] * 10 + ["Master"] * 10,
+            "nota": [30, 31, 32, 33, 34, 35, 36, 37, 38, 39] + [80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
+        }
+    )
+
+    check = profiling.missingness_check(df, "escolaridade", "nota")
+
+    assert check["n_ausente"] == 10
+    assert check["n_presente"] == 10
+    assert check["media_ausente"] < check["media_presente"]
+    assert check["p_valor"] < 0.05
+
+
+def test_missingness_check_nao_acusa_nada_quando_ausencia_e_aleatoria():
+    df = pd.DataFrame(
+        {
+            # Notas intercaladas: os dois grupos têm a mesma faixa de valores.
+            "escolaridade": [None, "Master"] * 10,
+            "nota": list(range(50, 70)),
+        }
+    )
+
+    check = profiling.missingness_check(df, "escolaridade", "nota")
+
+    assert check["p_valor"] > 0.05
