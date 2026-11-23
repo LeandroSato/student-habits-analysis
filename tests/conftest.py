@@ -33,3 +33,14 @@ def df_sujo() -> pd.DataFrame:
             "exam_score": [70.0, 65.0, 50.0, 100.0, 80.0, 80.0],
         }
     )
+
+
+@pytest.fixture
+def df_valido(df_sujo) -> pd.DataFrame:
+    """Mesma base pequena, mas sem o valor impossível e sem a linha repetida.
+
+    Serve para os testes de engenharia de dados, que pressupõem base já limpa.
+    """
+    df = df_sujo.copy()
+    df.loc[4, "study_hours_per_day"] = 6.0
+    return df.iloc[:5].reset_index(drop=True)
