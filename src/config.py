@@ -275,6 +275,10 @@ FEATURE_LABELS = {
     "part_time_job" + BINARY_SUFFIX: "Trabalha meio período",
     "extracurricular_participation" + BINARY_SUFFIX: "Faz atividade extracurricular",
     "parental_education_level": "Escolaridade dos pais",
+    "parental_education_level" + MISSING_FLAG_SUFFIX: "Informou escolaridade dos pais",
+    "leisure_screen_hours": "Tela de lazer (horas por dia)",
+    "study_share": "Fatia do tempo dedicada ao estudo",
+    "exam_score": "Nota na prova",
 }
 
 # Passo de cada controle do simulador, na unidade da própria variável.
