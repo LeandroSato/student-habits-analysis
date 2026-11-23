@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd  # noqa: E402
 
-from src import cleaning, config, features, profiling  # noqa: E402
+from src import cleaning, config, features, model, profiling  # noqa: E402
 from src import stats_analysis as sa  # noqa: E402
 from src.data_loading import categorical_columns, load_raw, numeric_columns  # noqa: E402
 from src.reporting import markdown_table, write_report  # noqa: E402
@@ -785,6 +785,224 @@ def etapa_3_estatistica(df: pd.DataFrame) -> Path:
     return destino
 
 
+def bloco_para_que_serve() -> str:
+    return "\n".join(
+        [
+            "## 4.1 Que decisão isso apoia, e quem usaria",
+            "",
+            "A tarefa 3 terminou com um ranking de correlações. Um ranking responde "
+            "“o que anda junto com nota alta” — não responde **o que fazer com um "
+            "aluno específico na segunda-feira de manhã**. É essa a lacuna que o "
+            "simulador fecha.",
+            "",
+            "**Quem usaria:** coordenação pedagógica e tutoria de uma instituição de "
+            "ensino.",
+            "",
+            "**A decisão apoiada:** onde colocar o esforço. Diante do retrato de "
+            "hábitos de um aluno, qual mudança o modelo associa ao maior ganho — "
+            "levar sono para a conversa ou tempo de tela? Encaminhar para apoio "
+            "psicológico ou para oficina de organização de estudo? O app ordena as "
+            "opções por tamanho do efeito previsto, para aquele aluno, e não no "
+            "geral.",
+            "",
+            "**Uso secundário:** rodar a previsão na turma inteira e começar a "
+            "tutoria pelos alunos de previsão mais baixa, em vez de esperar a "
+            "primeira prova.",
+            "",
+            "**O que o app explicitamente não faz:** prometer que mudar o hábito "
+            "muda a nota. O aviso está na primeira tela, não escondido no rodapé.",
+        ]
+    )
+
+
+def bloco_escolha_do_modelo(comparacao: pd.DataFrame, escolhido: str) -> str:
+    tabela = comparacao.rename(
+        columns={
+            "conjunto": "conjunto",
+            "variaveis": "variáveis",
+            "r2_cv_medio": "R² (validação cruzada)",
+            "r2_cv_desvio": "desvio entre dobras",
+        }
+    )
+    linha = comparacao[comparacao["conjunto"] == escolhido].iloc[0]
+    outro = comparacao[comparacao["conjunto"] != escolhido].iloc[0]
+    diferenca = round(abs(linha["r2_cv_medio"] - outro["r2_cv_medio"]), 4)
+
+    return "\n".join(
+        [
+            "## 4.2 Qual modelo, e por quê",
+            "",
+            "### Regressão linear, não algo mais forte",
+            "",
+            "O produto aqui é a frase “uma hora a mais de estudo está associada a X "
+            "pontos”. Árvore, floresta ou boosting ganhariam alguns pontos de "
+            "precisão e **perderiam a frase** — e sem a frase o app não apoia "
+            "decisão nenhuma, só cospe um número. A tarefa 3 ajuda: Pearson e "
+            "Spearman concordaram em todas as variáveis, ou seja, as relações são "
+            "lineares e monótonas. A escolha não é só de conveniência.",
+            "",
+            "### Quais variáveis entram",
+            "",
+            "Dois conjuntos foram treinados e comparados, com a regra escrita antes "
+            f"de ver o resultado: o modelo maior só vence se ganhar mais de "
+            f"{config.R2_TOLERANCE} de R² em validação cruzada.",
+            "",
+            markdown_table(tabela),
+            "",
+            f"**Escolhido: o conjunto {escolhido}.** A diferença de R² entre os dois "
+            f"é de {diferenca} — dentro da tolerância. O conjunto enxuto usa só os "
+            "sete hábitos que passaram no teste de significância da tarefa 3; idade, "
+            "dieta, qualidade da internet, trabalho de meio período, atividade "
+            "extracurricular e escolaridade dos pais ficam de fora porque não "
+            "mostraram relação com a nota e não melhoram a previsão.",
+            "",
+            "As duas derivadas da tarefa 2 "
+            + ", ".join(_cod(c) for c in config.DERIVED_COLS)
+            + " também ficam de fora, pelo motivo já registrado na tarefa 3: "
+            "são redundantes com as colunas de origem e tornariam os coeficientes "
+            "instáveis.",
+        ]
+    )
+
+
+def bloco_desempenho(ajustado, cv: dict) -> str:
+    m = ajustado.metrics
+    tabela = pd.DataFrame(
+        [
+            {"métrica": "R² (teste)", "valor": m["r2"]},
+            {"métrica": "R² (treino)", "valor": m["r2_treino"]},
+            {"métrica": "R² médio (validação cruzada)", "valor": cv["r2_medio"]},
+            {"métrica": "desvio do R² entre as dobras", "valor": cv["r2_desvio"]},
+            {"métrica": "erro médio absoluto (pontos)", "valor": m["mae"]},
+            {"métrica": "raiz do erro quadrático médio", "valor": m["rmse"]},
+            {"métrica": "erro ao chutar sempre a média", "valor": m["mae_baseline"]},
+            {"métrica": "alunos no treino", "valor": m["n_treino"]},
+            {"métrica": "alunos no teste", "valor": m["n_teste"]},
+        ]
+    )
+
+    diferenca_treino_teste = round(m["r2_treino"] - m["r2"], 4)
+    return "\n".join(
+        [
+            "## 4.3 O modelo acerta?",
+            "",
+            markdown_table(tabela),
+            "",
+            f"O modelo erra em média **{m['mae']} pontos**. Chutar sempre a nota "
+            f"média erraria **{m['mae_baseline']}** — é essa a comparação que "
+            "importa, porque um R² solto não diz se o modelo faz algo melhor que o "
+            "óbvio.",
+            "",
+            f"R² de treino e de teste diferem em {diferenca_treino_teste}, e o R² "
+            f"varia {cv['r2_desvio']} entre as cinco dobras da validação cruzada. "
+            "Os dois números juntos dizem que o resultado não depende de qual "
+            "pedaço da base caiu no treino, e que o modelo não decorou os dados.",
+            "",
+            f"Dobras: {', '.join(str(r) for r in cv['r2_por_dobra'])}.",
+        ]
+    )
+
+
+def bloco_coeficientes(ajustado) -> str:
+    coefs = model.coefficient_table(ajustado)
+    tabela = coefs.copy()
+    tabela["variavel"] = tabela["variavel"].map(
+        lambda c: config.FEATURE_LABELS.get(c, c)
+    )
+    tabela = tabela.rename(
+        columns={
+            "variavel": "hábito",
+            "pontos_por_unidade": "pontos por unidade",
+            "pontos_por_desvio": "pontos por desvio padrão",
+            "direcao": "direção",
+        }
+    )
+
+    maior = coefs.iloc[0]
+    rotulo_maior = config.FEATURE_LABELS.get(maior["variavel"], maior["variavel"])
+
+    return "\n".join(
+        [
+            "## 4.4 O que cada hábito pesa",
+            "",
+            markdown_table(tabela),
+            "",
+            f"Intercepto: {model.intercept(ajustado)}. Ele é a nota prevista com "
+            "todas as variáveis em zero — situação que não existe (ninguém dorme 0 "
+            "hora e tem 0% de frequência), então não tem leitura prática; entra só "
+            "na conta.",
+            "",
+            "**Duas unidades, duas perguntas.** “Pontos por unidade” responde quanto "
+            "a nota muda por uma hora a mais — é o número que o simulador usa. "
+            "“Pontos por desvio padrão” responde qual hábito pesa mais, e é o único "
+            "jeito honesto de comparar: hora de estudo e ponto percentual de "
+            "frequência não se comparam direto.",
+            "",
+            f"Por qualquer uma das duas medidas, **{rotulo_maior.lower()}** domina "
+            f"({maior['pontos_por_unidade']} pontos por unidade, "
+            f"{maior['pontos_por_desvio']} por desvio padrão).",
+        ]
+    )
+
+
+def bloco_limites_do_modelo(ajustado) -> str:
+    limite_min, limite_max = config.SCORE_LIMITS
+    return "\n".join(
+        [
+            "## 4.5 Onde o modelo falha",
+            "",
+            "| Limite | O que foi feito |",
+            "|---|---|",
+            f"| **Efeito teto.** 48 alunos tiraram exatamente {limite_max}; sem "
+            f"travar, o modelo preveria nota acima de {limite_max} | previsão "
+            f"truncada em [{limite_min}, {limite_max}], e o app avisa quando bate no "
+            "teto |",
+            "| **Suposição linear.** O modelo assume que a oitava hora de estudo "
+            "vale o mesmo que a primeira | sustentado pela concordância entre "
+            "Pearson e Spearman (tarefa 3), mas continua sendo suposição |",
+            "| **Extrapolação.** Fora da faixa observada a previsão é invenção | os "
+            "controles do app param no mínimo e no máximo da base |",
+            "| **Nada é causa.** O modelo descreve quem tira nota alta, não o que "
+            "produz nota alta | aviso fixo na primeira tela do app e em toda "
+            "conclusão |",
+            "| **Saúde mental é autodeclarada e pode ser consequência.** Ir mal na "
+            "prova afeta como o aluno avalia a própria saúde mental | registrado "
+            "como limitação; o sentido da relação não é testável com este dado |",
+            "",
+            "### Decisão de engenharia: modelo treinado na hora",
+            "",
+            "O app treina o modelo ao abrir, em cache de sessão, em vez de carregar "
+            "um arquivo `.pkl` versionado. São 1000 linhas e o treino leva "
+            "milissegundos; um artefato binário no repositório envelheceria em "
+            "silêncio na primeira vez que o tratamento mudasse.",
+        ]
+    )
+
+
+def etapa_4_modelo(df: pd.DataFrame) -> Path:
+    comparacao = model.compare_models(df)
+    escolhido = model.choose_model(comparacao)
+    ajustado = model.train(df)
+    cv = model.cross_val_r2(df)
+
+    destino = config.REPORTS_DIR / "04_modelo.md"
+    write_report(
+        destino,
+        "4. Aplicação prática: simulador de cenários",
+        [
+            "Gerado por `analysis/run_analysis.py`. O app está em "
+            "`app/streamlit_app.py` e roda com `streamlit run app/streamlit_app.py`.",
+            AVISO_CAUSA,
+            bloco_para_que_serve(),
+            bloco_escolha_do_modelo(comparacao, escolhido),
+            bloco_desempenho(ajustado, cv),
+            bloco_coeficientes(ajustado),
+            bloco_limites_do_modelo(ajustado),
+        ],
+    )
+    return destino
+
+
 def main() -> None:
     df = load_raw()
     print(f"Base carregada: {len(df)} linhas x {len(df.columns)} colunas")
@@ -797,6 +1015,9 @@ def main() -> None:
 
     destino = etapa_3_estatistica(com_features)
     print(f"Etapa 3 (estatistica) -> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    destino = etapa_4_modelo(com_features)
+    print(f"Etapa 4 (modelo)      -> {destino.relative_to(config.PROJECT_ROOT)}")
 
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     base_tratada = config.PROCESSED_DIR / "alunos_tratados.csv"

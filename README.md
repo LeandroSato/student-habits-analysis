@@ -30,11 +30,27 @@ No Linux ou macOS, troque a ativação por `source .venv/bin/activate`.
 python analysis/run_analysis.py
 ```
 
+**Abrir o simulador** (app interativo, abre em http://localhost:8501):
+
+```powershell
+streamlit run app/streamlit_app.py
+```
+
 **Rodar os testes:**
 
 ```powershell
 pytest
 ```
+
+## O simulador
+
+![Tela do simulador de hábitos e nota](reports/figures/app_simulador.jpg)
+
+Ajuste os hábitos de um aluno e o app mostra a nota que o modelo associa a esse
+perfil, com as mudanças ordenadas pelo ganho previsto. Pensado para coordenação
+pedagógica e tutoria: a decisão que ele apoia é **qual hábito levar para a
+conversa primeiro**, e qual aluno chamar antes. O raciocínio completo está em
+[reports/04_modelo.md](reports/04_modelo.md).
 
 ## Estrutura do projeto
 
@@ -59,6 +75,7 @@ o mesmo tratamento alimenta o relatório e o Streamlit, sem código duplicado.
 | 1. Exploração inicial e diagnóstico de qualidade | [reports/01_exploracao.md](reports/01_exploracao.md) |
 | 2. Engenharia de dados (cada decisão com o motivo) | [reports/02_engenharia.md](reports/02_engenharia.md) |
 | 3. Análise estatística e ranking de influência | [reports/03_estatistica.md](reports/03_estatistica.md) |
+| 4. Modelo e simulador: que decisão apoia | [reports/04_modelo.md](reports/04_modelo.md) |
 
 ## Principais conclusões
 
