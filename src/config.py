@@ -215,3 +215,75 @@ MULTICOLLINEARITY_THRESHOLD = 0.7
 
 # Nível de significância usado em todos os testes.
 ALPHA = 0.05
+
+# --- Modelo (tarefa 4) ------------------------------------------------------
+
+# Conjunto completo: tudo que poderia explicar nota, menos as derivadas da
+# tarefa 2, que são redundantes com as colunas de origem (ver tarefa 3).
+MODEL_NUMERIC_FULL = [
+    "study_hours_per_day",
+    "social_media_hours",
+    "netflix_hours",
+    "attendance_percentage",
+    "sleep_hours",
+    "exercise_frequency",
+    "mental_health_rating",
+    "age",
+    "diet_quality" + ORDINAL_SUFFIX,
+    "internet_quality" + ORDINAL_SUFFIX,
+    "part_time_job" + BINARY_SUFFIX,
+    "extracurricular_participation" + BINARY_SUFFIX,
+]
+MODEL_CATEGORICAL_FULL = ["parental_education_level"]
+
+# Conjunto enxuto: só o que passou no teste de significância da tarefa 3 — e
+# todas são hábitos, nenhuma é característica fixa do aluno.
+MODEL_NUMERIC_REDUCED = [
+    "study_hours_per_day",
+    "social_media_hours",
+    "netflix_hours",
+    "attendance_percentage",
+    "sleep_hours",
+    "exercise_frequency",
+    "mental_health_rating",
+]
+MODEL_CATEGORICAL_REDUCED: list[str] = []
+
+# Diferença de R² a partir da qual vale pagar o preço de um modelo maior.
+R2_TOLERANCE = 0.005
+
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
+CV_FOLDS = 5
+
+# Limites em que a previsão é truncada: a nota não existe fora deles, e a tarefa
+# 1 mostrou efeito teto em 100.
+SCORE_LIMITS = PLAUSIBLE_RANGES["exam_score"]
+
+# Rótulos em português para a interface do simulador.
+FEATURE_LABELS = {
+    "study_hours_per_day": "Horas de estudo por dia",
+    "social_media_hours": "Horas em redes sociais por dia",
+    "netflix_hours": "Horas de streaming por dia",
+    "attendance_percentage": "Frequência nas aulas (%)",
+    "sleep_hours": "Horas de sono por noite",
+    "exercise_frequency": "Exercício (vezes por semana)",
+    "mental_health_rating": "Saúde mental autodeclarada (1 a 10)",
+    "age": "Idade",
+    "diet_quality" + ORDINAL_SUFFIX: "Qualidade da dieta (0 a 2)",
+    "internet_quality" + ORDINAL_SUFFIX: "Qualidade da internet (0 a 2)",
+    "part_time_job" + BINARY_SUFFIX: "Trabalha meio período",
+    "extracurricular_participation" + BINARY_SUFFIX: "Faz atividade extracurricular",
+    "parental_education_level": "Escolaridade dos pais",
+}
+
+# Passo de cada controle do simulador, na unidade da própria variável.
+FEATURE_STEPS = {
+    "study_hours_per_day": 0.1,
+    "social_media_hours": 0.1,
+    "netflix_hours": 0.1,
+    "attendance_percentage": 0.5,
+    "sleep_hours": 0.1,
+    "exercise_frequency": 1.0,
+    "mental_health_rating": 1.0,
+}
