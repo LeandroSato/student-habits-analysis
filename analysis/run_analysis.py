@@ -1193,6 +1193,315 @@ def etapa_5_visualizacao(df: pd.DataFrame) -> Path:
     return destino
 
 
+def bloco_habitos_que_mais_pesam(
+    ranking: pd.DataFrame, coefs: pd.DataFrame
+) -> str:
+    significativas = ranking[ranking["significativo"]]
+    relevantes = significativas[significativas["forca"] != "desprezível"]
+
+    juncao = relevantes.merge(
+        coefs[["variavel", "pontos_por_unidade", "pontos_por_desvio"]],
+        on="variavel",
+        how="left",
+    )
+    juncao = juncao[juncao["pontos_por_unidade"].notna()]
+    tabela = juncao[
+        ["variavel", "r_pearson", "pontos_por_unidade", "pontos_por_desvio", "forca"]
+    ].copy()
+    tabela["variavel"] = tabela["variavel"].map(
+        lambda c: config.FEATURE_LABELS.get(c, c)
+    )
+    tabela = tabela.rename(
+        columns={
+            "variavel": "hábito",
+            "r_pearson": "correlação com a nota",
+            "pontos_por_unidade": "pontos por unidade (modelo)",
+            "pontos_por_desvio": "pontos por desvio padrão",
+            "forca": "força",
+        }
+    )
+
+    topo = juncao.iloc[0]
+    rotulo_topo = config.FEATURE_LABELS.get(topo["variavel"], topo["variavel"])
+    vezes_o_segundo = abs(topo["pontos_por_desvio"]) / abs(
+        juncao.iloc[1]["pontos_por_desvio"]
+    )
+
+    # Números do bloco de tela, lidos do ranking em vez de digitados.
+    def _r(variavel: str) -> float:
+        linha = ranking[ranking["variavel"] == variavel]
+        return float(linha.iloc[0]["r_pearson"]) if not linha.empty else float("nan")
+
+    r_tela = _r("leisure_screen_hours")
+    r_redes = _r("social_media_hours")
+    r_streaming = _r("netflix_hours")
+
+    return "\n".join(
+        [
+            "## 6.1 Quais hábitos mais afetam as notas",
+            "",
+            "A tabela junta as duas medidas que a análise produziu: a correlação "
+            "simples (tarefa 3) e o peso dentro do modelo, que controla pelos "
+            "outros hábitos (tarefa 4). Quando as duas apontam na mesma direção, a "
+            "conclusão é mais firme.",
+            "",
+            markdown_table(tabela),
+            "",
+            f"**{rotulo_topo} domina.** Correlação de {topo['r_pearson']} e "
+            f"{topo['pontos_por_unidade']} pontos de nota por hora no modelo — "
+            f"{vezes_o_segundo:.1f} vezes o peso do segundo colocado quando se "
+            "comparam desvios padrão. Nenhuma outra variável da base chega perto.",
+            "",
+            "**O segundo bloco é de tempo de tela.** Redes sociais e streaming "
+            "aparecem com sinal negativo nas duas medidas. Somadas em uma coluna "
+            f"só, elas correlacionam mais forte com a nota ({r_tela}) do que cada "
+            f"uma separada ({r_redes} e {r_streaming}), então a leitura que se "
+            "sustenta é sobre **tempo de lazer em tela como um todo**, não sobre "
+            "uma plataforma específica.",
+            "",
+            "**Sono e exercício pesam pouco, mas pesam.** Associações fracas e "
+            "significativas, e com sinal estável nas duas medidas — não são ruído, "
+            "mas também não resolvem o problema de ninguém sozinhos.",
+        ]
+    )
+
+
+def bloco_recomendacoes(
+    df: pd.DataFrame, ajustado, medias: dict[str, pd.Series]
+) -> str:
+    mediano = {c: float(df[c].median()) for c in ajustado.numeric}
+    nota_mediana = float(model.predict(ajustado, mediano)[0])
+
+    uma_hora = model.scenario_delta(
+        ajustado, mediano, {"study_hours_per_day": mediano["study_hours_per_day"] + 1}
+    )
+    menos_tela = model.scenario_delta(
+        ajustado,
+        mediano,
+        {
+            "social_media_hours": max(mediano["social_media_hours"] - 1, 0),
+            "netflix_hours": max(mediano["netflix_hours"] - 1, 0),
+        },
+    )
+    combinado = model.scenario_delta(
+        ajustado,
+        mediano,
+        {
+            "study_hours_per_day": mediano["study_hours_per_day"] + 1,
+            "social_media_hours": max(mediano["social_media_hours"] - 1, 0),
+        },
+    )
+
+    estudo = medias["faixa_estudo"]
+    redes = medias["faixa_redes_sociais"]
+    sono = medias["faixa_sono"]
+
+    return "\n".join(
+        [
+            "## 6.2 Recomendações práticas",
+            "",
+            "Cada recomendação abaixo é uma **hipótese a testar**, com o tamanho do "
+            "efeito que o modelo prevê. O dado não permite prometer resultado — "
+            "permite priorizar o que vale a pena tentar primeiro, e com que "
+            "expectativa.",
+            "",
+            f"O ponto de partida é o aluno mediano da base "
+            f"({mediano['study_hours_per_day']:.1f}h de estudo, "
+            f"{mediano['social_media_hours']:.1f}h de redes, "
+            f"{mediano['netflix_hours']:.1f}h de streaming, "
+            f"{mediano['sleep_hours']:.1f}h de sono), com nota prevista de "
+            f"**{nota_mediana:.1f}**.",
+            "",
+            "### 1. Comece pela hora de estudo, não pelo resto",
+            "",
+            f"Uma hora a mais por dia leva a previsão de {uma_hora['nota_antes']} "
+            f"para {uma_hora['nota_depois']} (**{uma_hora['diferenca']:+.2f} "
+            "pontos**). Nenhuma outra mudança de uma unidade chega perto. Na "
+            f"comparação por faixa, a nota média vai de {estudo.iloc[0]:.1f} "
+            f"({estudo.index[0]}) a {estudo.iloc[-1]:.1f} ({estudo.index[-1]}).",
+            "",
+            "Para quem coordena: se só der para tratar um assunto na conversa de "
+            "tutoria, é esse.",
+            "",
+            "### 2. Trate tempo de tela como um bloco só",
+            "",
+            f"Uma hora a menos de redes **e** uma a menos de streaming somam "
+            f"{menos_tela['diferenca']:+.2f} pontos na previsão. Separar as duas em "
+            "conversas diferentes desperdiça o achado: o que a análise sustenta é o "
+            f"tempo total. Por faixa, a nota média vai de {redes.iloc[0]:.1f} "
+            f"({redes.index[0]}) a {redes.iloc[-1]:.1f} ({redes.index[-1]}).",
+            "",
+            "### 3. Combinar as duas rende mais que qualquer uma sozinha",
+            "",
+            f"Uma hora a mais de estudo com uma a menos de redes sociais: "
+            f"{combinado['nota_antes']} para {combinado['nota_depois']} "
+            f"(**{combinado['diferenca']:+.2f} pontos**). É a troca mais direta de "
+            "levar para um aluno, porque uma hora sai de um lugar e entra no outro.",
+            "",
+            "### 4. Saúde mental merece programa próprio, não conselho",
+            "",
+            "É a segunda variável de maior peso no modelo e a única que separa "
+            "grupos de forma significativa. Mas é autodeclarada e medida junto com "
+            "a nota: pode ser causa, consequência, ou as duas. A recomendação não é "
+            "“melhore sua saúde mental” — é **tratar nota baixa persistente como "
+            "possível sinal de alerta** e ter para onde encaminhar.",
+            "",
+            "### 5. Sono: ganho pequeno, custo pequeno",
+            "",
+            f"Por faixa, {sono.index[0]} tem média {sono.iloc[0]:.1f} e a faixa "
+            f"recomendada tem {sono.loc['7 a 9h (recomendado)']:.1f}. O efeito é "
+            "fraco, mas é a recomendação mais barata da lista — entra como item de "
+            "orientação geral, não como prioridade de programa.",
+            "",
+            "### O que não recomendar",
+            "",
+            "Dieta, qualidade da internet, trabalho de meio período e atividade "
+            "extracurricular **não mostraram relação com a nota** nesta base. "
+            "Montar programa em cima de qualquer um deles seria gastar esforço sem "
+            "nada no dado que sustente.",
+        ]
+    )
+
+
+def bloco_grupos_insights(df: pd.DataFrame, grupos: pd.DataFrame) -> str:
+    significativos = grupos[grupos["significativo"]]
+    nao_significativos = grupos[~grupos["significativo"]]
+
+    partes = ["## 6.3 Diferenças entre grupos", ""]
+
+    for linha in significativos.itertuples():
+        resumo = sa.group_summary(df, linha.coluna)
+        maior = resumo.loc[resumo["media"].idxmax()]
+        menor = resumo.loc[resumo["media"].idxmin()]
+        partes += [
+            f"### {config.FEATURE_LABELS.get(linha.coluna, linha.coluna)} — há diferença",
+            "",
+            markdown_table(resumo),
+            "",
+            f"Kruskal-Wallis com p corrigido {_formata_p(linha.p_ajustado)} e "
+            f"ε² = {linha.efeito_epsilon2}. Entre o grupo de maior média "
+            f"({maior['grupo']}, {maior['media']}) e o de menor ({menor['grupo']}, "
+            f"{menor['media']}) há **{maior['media'] - menor['media']:.1f} pontos**.",
+            "",
+            "O ε² diz que cerca de "
+            f"{round(100 * linha.efeito_epsilon2, 1)}% da variação de posição na "
+            "nota está ligada a essa variável: real, mas longe de explicar tudo.",
+            "",
+        ]
+
+    if "gender" in set(nao_significativos["coluna"]):
+        resumo_genero = sa.group_summary(df, "gender")
+        linha_genero = grupos[grupos["coluna"] == "gender"].iloc[0]
+        partes += [
+            "### Gênero — não há diferença, e isso é um achado",
+            "",
+            markdown_table(resumo_genero),
+            "",
+            f"Kruskal-Wallis com p = {_formata_p(linha_genero['p_ajustado'])} e "
+            f"ε² = {linha_genero['efeito_epsilon2']}. As médias ficam a menos de um "
+            "ponto umas das outras.",
+            "",
+            "Vale registrar justamente porque contraria a expectativa de quem "
+            "procura diferença de desempenho por gênero: **nesta base ela não "
+            "existe**. Com 42 alunos em `Other`, o grupo é pequeno e um efeito "
+            "pequeno poderia passar despercebido — mas a diferença entre `Female` e "
+            "`Male`, que têm quase 480 cada, também não aparece.",
+            "",
+        ]
+
+    outros = [c for c in nao_significativos["coluna"] if c != "gender"]
+    if outros:
+        partes += [
+            "### Os demais grupos",
+            "",
+            "Sem diferença detectável em "
+            + ", ".join(config.FEATURE_LABELS.get(c, c).lower() for c in outros)
+            + ". Chama atenção que **escolaridade dos pais** esteja nessa lista: "
+            "costuma ser a explicação pronta para diferença de desempenho, e nesta "
+            "base ela não sustenta nada.",
+        ]
+
+    return "\n".join(partes).rstrip()
+
+
+def bloco_limitacoes(df: pd.DataFrame, ajustado) -> str:
+    extremos = profiling.extreme_value_concentration(df, config.TARGET)
+    return "\n".join(
+        [
+            "## 6.4 Limitações, ditas sem rodeio",
+            "",
+            "| Limitação | O que ela impede |",
+            "|---|---|",
+            "| **Dado observacional, de um único momento** | Impede qualquer "
+            "afirmação de causa. Nada foi sorteado, não há grupo de controle e "
+            "hábitos e nota foram medidos juntos. |",
+            "| **Causa reversa é plausível em pelo menos duas variáveis** | Ir bem "
+            "na prova pode melhorar a saúde mental declarada, e quem vai bem pode "
+            "se sentir à vontade para estudar mais. O dado não distingue. |",
+            "| **Variáveis não medidas** | Renda, escola de origem, conhecimento "
+            "prévio, qualidade do professor. Qualquer uma pode explicar parte do "
+            "que aqui aparece como efeito de hábito. |",
+            "| **Tudo é autodeclarado** | Horas de estudo e saúde mental vêm do "
+            "próprio aluno, com todo o viés de memória e de desejo de parecer bem "
+            "que isso carrega. |",
+            f"| **Efeito teto** | {extremos['n_no_maximo']} alunos "
+            f"({extremos['pct_no_maximo']}%) tiraram exatamente "
+            f"{extremos['valor_maximo']:.0f}. O modelo subestima quem já está no "
+            "topo. |",
+            "| **Uma base, um contexto** | 1000 alunos sem informação de país, "
+            "instituição ou curso. Não há como saber para quem isso generaliza. |",
+            f"| **Erro do modelo** | ±{ajustado.metrics['mae']} pontos em média. "
+            "Serve para orientar conversa e priorização, não para decidir a vida "
+            "de um aluno. |",
+            "",
+            "### Como sair da correlação, se alguém quiser",
+            "",
+            "A pergunta que este dado não responde é “mudar o hábito muda a nota?”. "
+            "Responder exigiria outro desenho:",
+            "",
+            "1. **Piloto com grupo de comparação.** Oferecer o programa de "
+            "organização de estudo a parte dos alunos, sorteados, e comparar as "
+            "notas depois.",
+            "2. **Medir em dois momentos.** Hábitos no começo do semestre, nota no "
+            "fim — assim pelo menos a ordem no tempo fica estabelecida.",
+            "3. **Acompanhar os mesmos alunos ao longo do tempo**, para ver se "
+            "quem muda de hábito muda de nota.",
+            "",
+            "Enquanto isso não existe, o que esta análise entrega é priorização "
+            "com base em evidência de associação — que é bem mais do que palpite, "
+            "e bem menos do que prova.",
+        ]
+    )
+
+
+def etapa_6_insights(df: pd.DataFrame) -> Path:
+    ranking = sa.influence_ranking(df)
+    grupos = sa.compare_all_groups(df)
+    ajustado = model.train(df)
+    coefs = model.coefficient_table(ajustado)
+
+    medias = {
+        faixa: df.groupby(faixa, observed=True)[config.TARGET].mean()
+        for faixa in ["faixa_estudo", "faixa_redes_sociais", "faixa_sono"]
+    }
+
+    destino = config.REPORTS_DIR / "06_insights.md"
+    write_report(
+        destino,
+        "6. Síntese de insights",
+        [
+            "Gerado por `analysis/run_analysis.py`. Todo número desta página vem "
+            "das etapas anteriores e do código que as produziu.",
+            AVISO_CAUSA,
+            bloco_habitos_que_mais_pesam(ranking, coefs),
+            bloco_recomendacoes(df, ajustado, medias),
+            bloco_grupos_insights(df, grupos),
+            bloco_limitacoes(df, ajustado),
+        ],
+    )
+    return destino
+
+
 def main() -> None:
     df = load_raw()
     print(f"Base carregada: {len(df)} linhas x {len(df.columns)} colunas")
@@ -1211,6 +1520,9 @@ def main() -> None:
 
     destino = etapa_5_visualizacao(com_features)
     print(f"Etapa 5 (visualizacao)-> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    destino = etapa_6_insights(com_features)
+    print(f"Etapa 6 (insights)    -> {destino.relative_to(config.PROJECT_ROOT)}")
 
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     base_tratada = config.PROCESSED_DIR / "alunos_tratados.csv"
