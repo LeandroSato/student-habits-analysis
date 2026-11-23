@@ -168,3 +168,50 @@ BINARY_SUFFIX = "_bin"
 
 # Colunas de tela de lazer, somadas em `leisure_screen_hours`.
 LEISURE_SCREEN_COLS = ["social_media_hours", "netflix_hours"]
+
+# --- Grupos de colunas para a análise estatística ---------------------------
+
+# Hábitos medidos direto na base.
+HABIT_COLS = [
+    "study_hours_per_day",
+    "social_media_hours",
+    "netflix_hours",
+    "attendance_percentage",
+    "sleep_hours",
+    "exercise_frequency",
+    "mental_health_rating",
+]
+
+# Contexto do aluno: não é hábito, mas pode explicar nota.
+CONTEXT_COLS = [
+    "age",
+    "diet_quality" + ORDINAL_SUFFIX,
+    "internet_quality" + ORDINAL_SUFFIX,
+    "part_time_job" + BINARY_SUFFIX,
+    "extracurricular_participation" + BINARY_SUFFIX,
+    "parental_education_level" + MISSING_FLAG_SUFFIX,
+]
+
+# Derivadas da tarefa 2. Correlacionam por construção com as colunas de origem,
+# então aparecem na análise mas ficam fora do modelo (ver tarefa 4).
+DERIVED_COLS = ["leisure_screen_hours", "study_share"]
+
+# Tudo que entra na matriz de correlação, junto com o alvo.
+CORRELATION_COLS = HABIT_COLS + CONTEXT_COLS + DERIVED_COLS
+
+# Colunas categóricas usadas na comparação entre grupos.
+GROUP_COLS = [
+    "gender",
+    "diet_quality",
+    "internet_quality",
+    "parental_education_level",
+    "part_time_job",
+    "extracurricular_participation",
+    "faixa_saude_mental",
+]
+
+# Limite para considerar duas variáveis preditoras redundantes entre si.
+MULTICOLLINEARITY_THRESHOLD = 0.7
+
+# Nível de significância usado em todos os testes.
+ALPHA = 0.05
