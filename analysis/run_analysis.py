@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd  # noqa: E402
 
 from src import cleaning, config, features, profiling  # noqa: E402
+from src import stats_analysis as sa  # noqa: E402
 from src.data_loading import categorical_columns, load_raw, numeric_columns  # noqa: E402
 from src.reporting import markdown_table, write_report  # noqa: E402
 
@@ -488,6 +489,302 @@ def etapa_2_engenharia(df: pd.DataFrame) -> tuple[pd.DataFrame, Path]:
     return com_features, destino
 
 
+AVISO_CAUSA = (
+    "> **Correlação não é causa.** Tudo nesta página mede se duas coisas andam "
+    "juntas, nunca se uma produz a outra. O dado é observacional e de um único "
+    "momento: não há grupo de controle, nada foi sorteado e qualquer relação aqui "
+    "pode vir de uma terceira variável não medida, ou valer no sentido inverso."
+)
+
+
+def _sim_nao(valor) -> str:
+    return "sim" if bool(valor) else "não"
+
+
+def _formata_p(valor) -> str:
+    """p-valor como texto, sem escrever "0" para algo que é apenas muito pequeno."""
+    if valor is None or pd.isna(valor):
+        return "—"
+    if valor < 1e-6:
+        return "< 0,000001"
+    return f"{valor:g}"
+
+
+def bloco_ranking(ranking: pd.DataFrame) -> str:
+    tabela = ranking.copy()
+    tabela["significativo"] = tabela["significativo"].map(_sim_nao)
+    tabela["concordam"] = tabela["concordam"].map(_sim_nao)
+    tabela["p_ajustado"] = tabela["p_ajustado"].map(_formata_p)
+    tabela = tabela[
+        [
+            "variavel",
+            "r_pearson",
+            "r_spearman",
+            "p_ajustado",
+            "significativo",
+            "direcao",
+            "forca",
+            "concordam",
+        ]
+    ].rename(
+        columns={
+            "r_pearson": "r (Pearson)",
+            "r_spearman": "r (Spearman)",
+            "p_ajustado": "p corrigido",
+            "concordam": "métodos concordam",
+        }
+    )
+
+    return "\n".join(
+        [
+            "## 3.1 Ranking de influência",
+            "",
+            "Ordenado pela força da associação com a nota, do mais forte para o mais "
+            "fraco. `p corrigido` já passou pela correção de Holm-Bonferroni.",
+            "",
+            markdown_table(tabela),
+            "",
+            "Leitura da coluna `força` (convenção usual, não corte desta base): "
+            f"|r| >= {sa.FORCA_FORTE} forte, >= {sa.FORCA_MODERADA} moderada, "
+            f">= {sa.FORCA_FRACA} fraca, abaixo disso desprezível.",
+        ]
+    )
+
+
+def bloco_maiores_influencias(ranking: pd.DataFrame) -> str:
+    significativas = ranking[ranking["significativo"]]
+    positivas = significativas[significativas["direcao"] == "positiva"]
+    negativas = significativas[significativas["direcao"] == "negativa"]
+
+    partes = ["## 3.2 As variáveis de maior influência", ""]
+
+    if not positivas.empty:
+        top = positivas.iloc[0]
+        partes += [
+            "### Maior influência positiva",
+            "",
+            f"**{_cod(top['variavel'])}, r = {top['r_pearson']}** "
+            f"(Spearman {top['r_spearman']}, p corrigido {_formata_p(top['p_ajustado'])}). "
+            f"Associação {top['forca']} e a mais forte da base — nenhuma outra "
+            "variável chega perto.",
+            "",
+        ]
+        outras_pos = positivas.iloc[1:]
+        if not outras_pos.empty:
+            partes += [
+                "Demais associações positivas significativas: "
+                + ", ".join(
+                    f"{_cod(r.variavel)} (r = {r.r_pearson}, {r.forca})"
+                    for r in outras_pos.itertuples()
+                )
+                + ".",
+                "",
+            ]
+
+    if not negativas.empty:
+        top = negativas.iloc[0]
+        partes += [
+            "### Maior influência negativa",
+            "",
+            f"**{_cod(top['variavel'])}, r = {top['r_pearson']}** "
+            f"(Spearman {top['r_spearman']}, p corrigido {_formata_p(top['p_ajustado'])}). "
+            f"Associação {top['forca']}: quanto maior, menor a nota que acompanha.",
+            "",
+        ]
+        outras_neg = negativas.iloc[1:]
+        if not outras_neg.empty:
+            partes += [
+                "Demais associações negativas significativas: "
+                + ", ".join(
+                    f"{_cod(r.variavel)} (r = {r.r_pearson}, {r.forca})"
+                    for r in outras_neg.itertuples()
+                )
+                + ".",
+                "",
+            ]
+
+    desprezivel = significativas[significativas["forca"] == "desprezível"]
+    if not desprezivel.empty:
+        partes += [
+            "### Significativo não quer dizer relevante",
+            "",
+            ", ".join(_cod(r.variavel) for r in desprezivel.itertuples())
+            + " passa no teste estatístico mas tem força desprezível "
+            + ", ".join(f"(r = {r.r_pearson})" for r in desprezivel.itertuples())
+            + ". Com 1000 alunos, relação minúscula fica significativa; reportar "
+            "isso como achado seria exagerar o que o dado diz.",
+            "",
+        ]
+
+    nao_significativas = ranking[~ranking["significativo"]]
+    if not nao_significativas.empty:
+        partes += [
+            "### Sem relação detectável com a nota",
+            "",
+            ", ".join(_cod(r.variavel) for r in nao_significativas.itertuples())
+            + ". Nenhuma passa pelo teste depois da correção de Holm. Vale dizer o "
+            "que isso **não** significa: não é prova de que não exista relação, só "
+            "de que esta amostra não a mostra.",
+        ]
+
+    return "\n".join(partes).rstrip()
+
+
+def bloco_concordancia(ranking: pd.DataFrame) -> str:
+    discordantes = ranking[~ranking["concordam"]]
+    if discordantes.empty:
+        texto = (
+            "Pearson e Spearman concordam em **todas** as variáveis (mesmo sinal e "
+            "diferença menor que 0,1). Nenhuma relação depende de valor extremo nem "
+            "esconde curva: as associações são lineares e monótonas, o que sustenta "
+            "o uso de regressão linear na tarefa 4."
+        )
+    else:
+        texto = (
+            "Pearson e Spearman divergem em "
+            + ", ".join(_cod(r.variavel) for r in discordantes.itertuples())
+            + ". Divergência indica relação não linear ou extremo puxando o "
+            "resultado — nessas variáveis a leitura linear precisa de cuidado."
+        )
+    return "\n".join(["## 3.3 Os dois métodos contam a mesma história?", "", texto])
+
+
+def bloco_redundancia(pares: pd.DataFrame) -> str:
+    partes = ["## 3.4 Redundância entre as variáveis", ""]
+    if pares.empty:
+        partes.append(
+            "Nenhum par de preditoras passa de "
+            f"|r| = {config.MULTICOLLINEARITY_THRESHOLD}."
+        )
+        return "\n".join(partes)
+
+    partes += [
+        "Pares que carregam quase a mesma informação "
+        f"(|r| >= {config.MULTICOLLINEARITY_THRESHOLD}):",
+        "",
+        markdown_table(pares),
+        "",
+        "Isso era esperado: as duas derivadas da tarefa 2 "
+        + ", ".join(_cod(c) for c in config.DERIVED_COLS)
+        + " são calculadas a partir das colunas de origem, então correlacionam com "
+        "elas por construção.",
+        "",
+        "**Consequência prática:** elas ficam **fora** do modelo da tarefa 4. Com "
+        "duas variáveis quase idênticas, o coeficiente de cada uma fica instável e "
+        "a leitura “quanto cada hora de estudo pesa na nota” deixa de valer. Elas "
+        "continuam úteis para ler e para os gráficos, não para o modelo.",
+    ]
+    return "\n".join(partes)
+
+
+def bloco_grupos(df: pd.DataFrame, grupos: pd.DataFrame) -> str:
+    tabela = grupos.copy()
+    tabela["significativo"] = tabela["significativo"].map(_sim_nao)
+    tabela["p_ajustado"] = tabela["p_ajustado"].map(_formata_p)
+    tabela = tabela[
+        ["coluna", "n_grupos", "H", "p_ajustado", "efeito_epsilon2", "significativo"]
+    ].rename(
+        columns={
+            "coluna": "variável",
+            "n_grupos": "grupos",
+            "p_ajustado": "p corrigido",
+            "efeito_epsilon2": "efeito (ε²)",
+        }
+    )
+
+    significativos = grupos[grupos["significativo"]]
+    partes = [
+        "## 3.5 A nota difere entre grupos?",
+        "",
+        "Teste de Kruskal-Wallis em cada coluna categórica, com p corrigido por "
+        "Holm. O tamanho de efeito (ε²) está na tabela porque p pequeno em amostra "
+        "grande não quer dizer diferença grande.",
+        "",
+        markdown_table(tabela),
+        "",
+    ]
+
+    if significativos.empty:
+        partes.append("Nenhuma diferença entre grupos sobrevive à correção.")
+        return "\n".join(partes)
+
+    for linha in significativos.itertuples():
+        resumo = sa.group_summary(df, linha.coluna)
+        partes += [
+            f"### {_cod(linha.coluna)} — diferença confirmada",
+            "",
+            f"p corrigido {_formata_p(linha.p_ajustado)}, ε² = {linha.efeito_epsilon2} "
+            f"(≈ {round(100 * linha.efeito_epsilon2, 1)}% da variação de posição na "
+            "nota ligada a essa variável).",
+            "",
+            markdown_table(resumo),
+            "",
+        ]
+
+    nao_significativos = grupos[~grupos["significativo"]]
+    if not nao_significativos.empty:
+        partes.append(
+            "Sem diferença detectável: "
+            + ", ".join(_cod(r.coluna) for r in nao_significativos.itertuples())
+            + ". O caso de "
+            + _cod("gender")
+            + " é o mais útil de registrar, porque contraria a expectativa de que "
+            "haja diferença por gênero: aqui não há."
+        )
+
+    return "\n".join(partes).rstrip()
+
+
+def bloco_metodo() -> str:
+    return "\n".join(
+        [
+            "## 3.6 Método, e por que cada escolha",
+            "",
+            "| Escolha | Por quê |",
+            "|---|---|",
+            "| Pearson **e** Spearman | Pearson mede relação linear, Spearman mede se "
+            "a ordem acompanha. Concordando, a relação é sólida; divergindo, há curva "
+            "ou extremo puxando — e isso precisa aparecer, não ser escondido. |",
+            "| Correção de Holm-Bonferroni | São 15 variáveis testadas contra a mesma "
+            "nota. A 5% por teste, esperar-se-ia quase um achado falso só por acaso. "
+            "Holm é menos conservadora que Bonferroni puro e não exige que os testes "
+            "sejam independentes — e aqui eles não são. |",
+            "| Kruskal-Wallis para grupos | Serve para 2 ou mais grupos, não exige "
+            "distribuição normal nem variância igual. Nota autodeclarada em grupos de "
+            "tamanhos muito diferentes (42 alunos em `Other` contra 481 em `Female`) "
+            "não cumpre essas condições. |",
+            "| Tamanho de efeito junto do p | Com 1000 alunos, quase tudo fica "
+            "significativo. O ε² responde “a diferença é grande?”, que é a pergunta "
+            "que interessa. |",
+            "| Coluna constante ignorada | Correlação com algo que não varia é "
+            "indefinida; incluir devolveria um número sem sentido. |",
+        ]
+    )
+
+
+def etapa_3_estatistica(df: pd.DataFrame) -> Path:
+    ranking = sa.influence_ranking(df)
+    pares = sa.multicollinearity(df)
+    grupos = sa.compare_all_groups(df)
+
+    destino = config.REPORTS_DIR / "03_estatistica.md"
+    write_report(
+        destino,
+        "3. Análise estatística",
+        [
+            "Gerado por `analysis/run_analysis.py`.",
+            AVISO_CAUSA,
+            bloco_ranking(ranking),
+            bloco_maiores_influencias(ranking),
+            bloco_concordancia(ranking),
+            bloco_redundancia(pares),
+            bloco_grupos(df, grupos),
+            bloco_metodo(),
+        ],
+    )
+    return destino
+
+
 def main() -> None:
     df = load_raw()
     print(f"Base carregada: {len(df)} linhas x {len(df.columns)} colunas")
@@ -497,6 +794,9 @@ def main() -> None:
 
     com_features, destino = etapa_2_engenharia(df)
     print(f"Etapa 2 (engenharia)  -> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    destino = etapa_3_estatistica(com_features)
+    print(f"Etapa 3 (estatistica) -> {destino.relative_to(config.PROJECT_ROOT)}")
 
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     base_tratada = config.PROCESSED_DIR / "alunos_tratados.csv"
