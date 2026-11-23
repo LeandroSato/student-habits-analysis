@@ -66,11 +66,9 @@ st.markdown(
 )
 
 st.warning(
-    "Este simulador mostra a nota **associada** a um perfil de hábitos, não o "
-    "efeito de mudar um hábito. O dado é de um único momento, sem grupo de "
-    "controle: um aluno que estuda mais pode ter nota maior por motivos que a "
-    "base não mediu. Use como ponto de partida de conversa, nunca como promessa "
-    "de resultado.",
+    "O app mostra a nota **associada** a um perfil de hábitos, não o efeito de "
+    "mudar um hábito. Ponto de partida de conversa, nunca promessa de resultado — "
+    "o porquê está em “Como este modelo funciona”, no fim da página.",
     title="Correlação não é causa",
     icon=":material/warning:",
 )
@@ -94,6 +92,11 @@ for coluna in ajustado.numeric:
         value=float(serie.median()),
         step=float(passo),
         key=f"slider_{coluna}",
+        # Saber o que é típico na base evita simular um perfil que quase não
+        # existe sem perceber.
+        help=f"Na base: mediana {serie.median():g}, "
+        f"metade dos alunos entre {serie.quantile(0.25):g} e "
+        f"{serie.quantile(0.75):g}.",
     )
 
 if st.sidebar.button("Voltar ao aluno mediano", width="stretch"):
@@ -106,26 +109,42 @@ if st.sidebar.button("Voltar ao aluno mediano", width="stretch"):
 nota_prevista = float(model.predict(ajustado, cenario)[0])
 limite_min, limite_max = config.SCORE_LIMITS
 
-with st.container(horizontal=True):
+percentil = float((base[config.TARGET] < nota_prevista).mean() * 100)
+faixa_min = max(limite_min, nota_prevista - erro_medio)
+faixa_max = min(limite_max, nota_prevista + erro_medio)
+
+# Grade em vez de container horizontal: o container dimensiona cada card pelo
+# próprio conteúdo, e os três saíam com larguras diferentes. A grade dá colunas
+# iguais, e `height="stretch"` iguala a altura pela mais alta da linha.
+with st.grid(3, gap="medium"):
     st.metric(
         "Nota prevista",
         f"{nota_prevista:.1f}",
         round(nota_prevista - nota_media, 1),
         delta_description="vs. média da base",
         border=True,
-    )
-    st.metric(
-        "Margem de erro do modelo",
-        f"± {erro_medio:.1f} pontos",
-        border=True,
-        help="Erro médio absoluto no conjunto de teste, que o modelo nunca viu.",
+        height="stretch",
+        help="O que o modelo associa a este perfil de hábitos — não o que "
+        "aconteceria se o aluno mudasse de hábito.",
     )
     st.metric(
         "Faixa provável",
-        f"{max(limite_min, nota_prevista - erro_medio):.0f} a "
-        f"{min(limite_max, nota_prevista + erro_medio):.0f}",
+        f"{faixa_min:.0f} a {faixa_max:.0f}",
         border=True,
-        help="A nota prevista mais ou menos o erro médio, truncada em 0 e 100.",
+        height="stretch",
+        help=f"A previsão mais ou menos o erro médio do modelo "
+        f"(± {erro_medio:.1f} pontos no conjunto de teste), truncada em "
+        f"{limite_min:.0f} e {limite_max:.0f}.",
+    )
+    # O valor vai curto de propósito: o Streamlit encolhe a fonte de valores
+    # longos, e os três cards ficariam com tamanhos de número diferentes.
+    st.metric(
+        "Percentil na base",
+        f"{percentil:.0f}º",
+        border=True,
+        height="stretch",
+        help="Este perfil fica acima de "
+        f"{percentil:.0f}% dos {len(base)} alunos da base.",
     )
 
 if nota_prevista >= limite_max:
@@ -296,8 +315,10 @@ incluí-las não melhorou o modelo.
   sustenta a suposição, mas ela continua sendo uma suposição.
 - **Fora da faixa observada.** Os controles param no mínimo e no máximo da base
   justamente porque extrapolar seria invenção.
-- **Nada aqui é causa.** Vale repetir: o modelo descreve quem tira nota alta,
-  não o que produz nota alta.
+- **Nada aqui é causa.** O dado é de um único momento, sem grupo de controle e
+  sem nada sorteado: um aluno que estuda mais pode ter nota maior por motivos
+  que a base não mediu, e a relação pode valer no sentido inverso. O modelo
+  descreve quem tira nota alta, não o que produz nota alta.
 """
     )
 
