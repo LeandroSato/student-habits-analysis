@@ -57,6 +57,7 @@ o mesmo tratamento alimenta o relatório e o Streamlit, sem código duplicado.
 | Etapa | Onde |
 |---|---|
 | 1. Exploração inicial e diagnóstico de qualidade | [reports/01_exploracao.md](reports/01_exploracao.md) |
+| 2. Engenharia de dados (cada decisão com o motivo) | [reports/02_engenharia.md](reports/02_engenharia.md) |
 
 ## Principais conclusões
 

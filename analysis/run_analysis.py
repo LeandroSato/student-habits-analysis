@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd  # noqa: E402
 
-from src import config, profiling  # noqa: E402
+from src import cleaning, config, features, profiling  # noqa: E402
 from src.data_loading import categorical_columns, load_raw, numeric_columns  # noqa: E402
 from src.reporting import markdown_table, write_report  # noqa: E402
 
@@ -254,12 +254,257 @@ def etapa_1_exploracao(df: pd.DataFrame) -> Path:
     return destino
 
 
+def bloco_decisao_ausentes(df: pd.DataFrame) -> str:
+    check = profiling.missingness_check(df, "parental_education_level")
+    coluna = _cod("parental_education_level")
+
+    tabela = pd.DataFrame(
+        [
+            {
+                "grupo": "não informou",
+                "alunos": check["n_ausente"],
+                "nota média": check["media_ausente"],
+            },
+            {
+                "grupo": "informou",
+                "alunos": check["n_presente"],
+                "nota média": check["media_presente"],
+            },
+        ]
+    )
+
+    if check["p_valor"] is not None and check["p_valor"] < 0.05:
+        leitura = (
+            f"O teste de Mann-Whitney dá **p = {check['p_valor']}**, abaixo de 0,05: "
+            "quem não informou tem nota diferente de quem informou. A ausência "
+            "carrega sinal e **não pode** ser descartada nem preenchida pela moda."
+        )
+    else:
+        leitura = (
+            f"O teste de Mann-Whitney dá **p = {check['p_valor']}**, bem acima de "
+            "0,05: não há evidência de que a nota de quem não informou seja "
+            f"diferente (diferença observada de {check['diferenca']} ponto). A "
+            "ausência parece aleatória em relação ao alvo."
+        )
+
+    return "\n".join(
+        [
+            "## 2.1 Decisão sobre os valores ausentes",
+            "",
+            f"{coluna} é a única coluna com ausência: **{check['n_ausente']} de "
+            f"{check['n_ausente'] + check['n_presente']} alunos**. Antes de decidir o "
+            "que fazer, a pergunta é se essa ausência tem relação com a nota.",
+            "",
+            markdown_table(tabela),
+            "",
+            leitura,
+            "",
+            "### As três opções, e por que a escolhida",
+            "",
+            "| Opção | Efeito | Decisão |",
+            "|---|---|---|",
+            f"| Descartar as {check['n_ausente']} linhas | Perde "
+            f"{round(100 * check['n_ausente'] / len(df), 1)}% da base sem corrigir "
+            "viés nenhum, já que a ausência não se liga à nota | descartada |",
+            "| Preencher pela moda (`High School`) | Põe "
+            f"{check['n_ausente']} alunos em um grupo sem nenhuma evidência: infla "
+            "esse grupo e dilui a comparação entre grupos da tarefa 3 | descartada |",
+            f"| Categoria própria `{config.MISSING_LABEL}` + flag "
+            f"`parental_education_level{config.MISSING_FLAG_SUFFIX}` | Mantém os "
+            "1000 alunos, não inventa valor e deixa a própria ausência disponível "
+            "para análise | **escolhida** |",
+            "",
+            "A flag existe por um motivo prático: se não informar a escolaridade dos "
+            "pais estivesse associado à nota, a flag mostraria isso na matriz de "
+            "correlação. Aqui ela serve de prova de que não está.",
+        ]
+    )
+
+
+def bloco_tratamento(log: dict) -> str:
+    tabela = pd.DataFrame(
+        [
+            {"passo": "linhas na entrada", "resultado": log["linhas_entrada"]},
+            {"passo": "linhas duplicadas removidas", "resultado": log["duplicatas_removidas"]},
+            {
+                "passo": "valores impossíveis corrigidos",
+                "resultado": log["valores_impossiveis_corrigidos"],
+            },
+            {
+                "passo": "colunas com ausência virada categoria",
+                "resultado": len(log["colunas_com_ausencia_como_categoria"]),
+            },
+            {"passo": "nulos restantes", "resultado": log["nulos_restantes"]},
+            {"passo": "linhas na saída", "resultado": log["linhas_saida"]},
+        ]
+    )
+    return "\n".join(
+        [
+            "## 2.2 O que o tratamento fez",
+            "",
+            markdown_table(tabela),
+            "",
+            "### Inconsistências: barrar em vez de consertar escondido",
+            "",
+            "A tarefa 1 não encontrou nenhum valor fora do domínio, então não havia "
+            "o que corrigir. Em vez de escrever um tratamento para um problema "
+            "inexistente — código morto que ninguém testa — o pipeline **valida e "
+            "interrompe**: se um arquivo futuro trouxer 30 horas de estudo por dia, "
+            "`clean()` levanta `DomainViolationError` e para. Corrigir em silêncio "
+            "com um `clip` seria pior: o número ficaria plausível e errado.",
+            "",
+            "A remoção de duplicatas segue no pipeline pelo mesmo raciocínio ao "
+            "contrário: custa nada, e o log registrando zero é um resultado "
+            "verificado, não um passo inútil.",
+        ]
+    )
+
+
+def bloco_faixas(df: pd.DataFrame) -> str:
+    partes = [
+        "## 2.3 Faixas criadas",
+        "",
+        "Faixa serve à leitura: “alunos que passam mais de 4h em redes sociais "
+        "tiram X” se explica em uma frase, coeficiente de regressão não. Todas as "
+        "faixas são **fechadas à esquerda** — um valor exatamente no corte cai na "
+        "faixa de cima, senão 2,0 h cairia em “1 a 2h” e contradiria o rótulo.",
+        "",
+    ]
+    for nome, spec in config.BIN_SPECS.items():
+        contagem = df[nome].value_counts().reindex(spec["labels"], fill_value=0)
+        tabela = pd.DataFrame(
+            {
+                "faixa": contagem.index,
+                "alunos": contagem.to_numpy(),
+                "pct": (100 * contagem / len(df)).round(1).to_numpy(),
+            }
+        )
+        cortes = ", ".join(
+            "infinito" if c == config.INF else str(c) for c in spec["bins"]
+        )
+        partes += [
+            f"### {_cod(nome)} — de {_cod(spec['coluna'])}",
+            "",
+            f"Cortes: {cortes}.",
+            "",
+            f"**Por quê:** {spec['motivo']}",
+            "",
+            markdown_table(tabela),
+            "",
+        ]
+    return "\n".join(partes).rstrip()
+
+
+def bloco_combinacoes(df: pd.DataFrame) -> str:
+    resumo = profiling.numeric_summary(
+        df, cols=[features.LEISURE_COL, features.STUDY_SHARE_COL]
+    )
+    nulos_share = int(df[features.STUDY_SHARE_COL].isna().sum())
+    return "\n".join(
+        [
+            "## 2.4 Combinações entre colunas",
+            "",
+            f"**{_cod(features.LEISURE_COL)}** = "
+            + " + ".join(_cod(c) for c in config.LEISURE_SCREEN_COLS)
+            + ". As duas medem tempo de tela por lazer; somadas, dão o tamanho real "
+            "do concorrente do estudo, em vez de duas metades analisadas à parte.",
+            "",
+            f"**{_cod(features.STUDY_SHARE_COL)}** = estudo ÷ (estudo + tela de "
+            "lazer). É a medida relativa: 2h de estudo com 1h de tela é uma rotina "
+            "diferente de 2h de estudo com 6h de tela, e em horas absolutas as duas "
+            "aparecem iguais.",
+            "",
+            markdown_table(resumo, index=True, index_label="coluna"),
+            "",
+            f"Nulos em {_cod(features.STUDY_SHARE_COL)}: **{nulos_share}**. A coluna "
+            "fica nula quando o aluno não registra nem estudo nem tela (divisão por "
+            "zero); na base do desafio isso não ocorre, mas o guarda existe para não "
+            "gerar infinito em silêncio.",
+        ]
+    )
+
+
+def bloco_codificacoes(df: pd.DataFrame) -> str:
+    linhas_ord = []
+    for coluna, mapa in config.ORDINAL_MAPS.items():
+        ordem = " < ".join(f"{k} = {v}" for k, v in sorted(mapa.items(), key=lambda kv: kv[1]))
+        linhas_ord.append(
+            {
+                "coluna": coluna,
+                "nova coluna": coluna + config.ORDINAL_SUFFIX,
+                "escala": ordem,
+            }
+        )
+    linhas_bin = [
+        {
+            "coluna": coluna,
+            "nova coluna": coluna + config.BINARY_SUFFIX,
+            "escala": " · ".join(f"{k} = {v}" for k, v in mapa.items()),
+        }
+        for coluna, mapa in config.BINARY_MAPS.items()
+    ]
+
+    return "\n".join(
+        [
+            "## 2.5 Codificações",
+            "",
+            "Texto com ordem natural vira número para poder entrar em correlação e "
+            "no modelo. Sim/não vira 0/1 pelo mesmo motivo.",
+            "",
+            markdown_table(pd.DataFrame(linhas_ord + linhas_bin)),
+            "",
+            f"{_cod('parental_education_level')} ficou **de fora** da codificação "
+            "ordinal de propósito: depois do tratamento ela tem a categoria "
+            f"`{config.MISSING_LABEL}`, que não ocupa lugar nenhum em uma escala "
+            "ordenada. Ela entra no modelo da tarefa 4 como one-hot.",
+            "",
+            "### Todas as colunas derivadas",
+            "",
+            ", ".join(_cod(c) for c in features.derived_columns(df))
+            + f" — {len(features.derived_columns(df))} colunas novas, nenhuma "
+            "substituindo a original.",
+        ]
+    )
+
+
+def etapa_2_engenharia(df: pd.DataFrame) -> tuple[pd.DataFrame, Path]:
+    tratado, log = cleaning.clean(df)
+    com_features = features.build_features(tratado)
+
+    destino = config.REPORTS_DIR / "02_engenharia.md"
+    write_report(
+        destino,
+        "2. Engenharia de dados",
+        [
+            "Gerado por `analysis/run_analysis.py`. Cada transformação desta página "
+            "tem o motivo escrito junto, porque decisão sem motivo não se defende.",
+            bloco_decisao_ausentes(df),
+            bloco_tratamento(log),
+            bloco_faixas(com_features),
+            bloco_combinacoes(com_features),
+            bloco_codificacoes(com_features),
+        ],
+    )
+    return com_features, destino
+
+
 def main() -> None:
     df = load_raw()
     print(f"Base carregada: {len(df)} linhas x {len(df.columns)} colunas")
 
     destino = etapa_1_exploracao(df)
-    print(f"Etapa 1 (exploracao) -> {destino.relative_to(config.PROJECT_ROOT)}")
+    print(f"Etapa 1 (exploracao)  -> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    com_features, destino = etapa_2_engenharia(df)
+    print(f"Etapa 2 (engenharia)  -> {destino.relative_to(config.PROJECT_ROOT)}")
+
+    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    base_tratada = config.PROCESSED_DIR / "alunos_tratados.csv"
+    com_features.to_csv(base_tratada, index=False, encoding="utf-8")
+    print(
+        f"Base tratada          -> {base_tratada.relative_to(config.PROJECT_ROOT)} "
+        f"({len(com_features)} linhas x {len(com_features.columns)} colunas)"
+    )
 
 
 if __name__ == "__main__":
