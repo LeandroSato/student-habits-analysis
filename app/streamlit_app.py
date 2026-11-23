@@ -1,0 +1,307 @@
+"""Simulador de cenários de hábitos (tarefa 4 do desafio).
+
+Para que serve: a análise mostrou quais hábitos acompanham nota alta, mas um
+ranking de correlações não diz o que fazer com um aluno específico. Este app
+transforma o modelo em uma ferramenta de conversa — dado o retrato de hábitos de
+um aluno, qual mudança o modelo associa ao maior ganho de nota.
+
+Quem usaria: coordenação pedagógica e tutoria. A decisão que o app apoia é onde
+colocar o esforço — qual hábito levar para a conversa com o aluno e qual aluno
+chamar primeiro.
+
+Rode com:  streamlit run app/streamlit_app.py
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import altair as alt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import streamlit as st  # noqa: E402
+
+from src import cleaning, config, features, model  # noqa: E402
+from src.data_loading import load_raw  # noqa: E402
+
+st.set_page_config(
+    page_title="Simulador de hábitos e nota",
+    page_icon=":material/insights:",
+    layout="wide",
+)
+
+
+@st.cache_data
+def carregar_base() -> pd.DataFrame:
+    """Lê e trata a base. Em cache porque não muda entre interações."""
+    tratado, _ = cleaning.clean(load_raw())
+    return features.build_features(tratado)
+
+
+@st.cache_resource
+def treinar_modelo(_base: pd.DataFrame) -> model.FittedModel:
+    """Treina o modelo uma vez por sessão.
+
+    Treinado na hora em vez de carregado de um `.pkl`: são 1000 linhas, leva
+    milissegundos, e assim o app nunca usa um modelo mais velho que o código de
+    tratamento.
+    """
+    return model.train(_base)
+
+
+base = carregar_base()
+ajustado = treinar_modelo(base)
+coeficientes = model.coefficient_table(ajustado)
+nota_media = float(base[config.TARGET].mean())
+erro_medio = ajustado.metrics["mae"]
+
+st.title("Simulador de hábitos e nota")
+st.markdown(
+    "Ajuste os hábitos de um aluno nos controles e veja a nota que o modelo "
+    "associa a esse perfil. Pensado para a conversa de tutoria: **qual hábito "
+    "levar para a mesa primeiro**."
+)
+
+st.warning(
+    "Este simulador mostra a nota **associada** a um perfil de hábitos, não o "
+    "efeito de mudar um hábito. O dado é de um único momento, sem grupo de "
+    "controle: um aluno que estuda mais pode ter nota maior por motivos que a "
+    "base não mediu. Use como ponto de partida de conversa, nunca como promessa "
+    "de resultado.",
+    title="Correlação não é causa",
+    icon=":material/warning:",
+)
+
+# --- Controles ---------------------------------------------------------------
+
+st.sidebar.header("Hábitos do aluno")
+st.sidebar.caption(
+    "Os limites de cada controle são o mínimo e o máximo observados na base: "
+    "fora dessa faixa o modelo estaria chutando."
+)
+
+cenario: dict[str, float] = {}
+for coluna in ajustado.numeric:
+    serie = base[coluna]
+    passo = config.FEATURE_STEPS.get(coluna, 0.1)
+    cenario[coluna] = st.sidebar.slider(
+        config.FEATURE_LABELS.get(coluna, coluna),
+        min_value=float(serie.min()),
+        max_value=float(serie.max()),
+        value=float(serie.median()),
+        step=float(passo),
+        key=f"slider_{coluna}",
+    )
+
+if st.sidebar.button("Voltar ao aluno mediano", width="stretch"):
+    for coluna in ajustado.numeric:
+        st.session_state[f"slider_{coluna}"] = float(base[coluna].median())
+    st.rerun()
+
+# --- Resultado ---------------------------------------------------------------
+
+nota_prevista = float(model.predict(ajustado, cenario)[0])
+limite_min, limite_max = config.SCORE_LIMITS
+
+with st.container(horizontal=True):
+    st.metric(
+        "Nota prevista",
+        f"{nota_prevista:.1f}",
+        round(nota_prevista - nota_media, 1),
+        delta_description="vs. média da base",
+        border=True,
+    )
+    st.metric(
+        "Margem de erro do modelo",
+        f"± {erro_medio:.1f} pontos",
+        border=True,
+        help="Erro médio absoluto no conjunto de teste, que o modelo nunca viu.",
+    )
+    st.metric(
+        "Faixa provável",
+        f"{max(limite_min, nota_prevista - erro_medio):.0f} a "
+        f"{min(limite_max, nota_prevista + erro_medio):.0f}",
+        border=True,
+        help="A nota prevista mais ou menos o erro médio, truncada em 0 e 100.",
+    )
+
+if nota_prevista >= limite_max:
+    st.info(
+        "A previsão bateu no teto de 100. A base tem 48 alunos exatamente em 100, "
+        "e acima disso a nota não existe — o modelo não consegue distinguir "
+        "perfis muito dedicados entre si.",
+        icon=":material/info:",
+    )
+
+# --- Onde mexer primeiro -----------------------------------------------------
+
+st.subheader("Onde mexer primeiro")
+st.markdown(
+    "Cada linha é o mesmo aluno com **um** hábito alterado em uma unidade, "
+    "mantendo os outros parados. Ordenado pelo ganho que o modelo associa à "
+    "mudança."
+)
+
+MUDANCAS = [
+    ("study_hours_per_day", +1.0, "Estudar 1 hora a mais por dia"),
+    ("social_media_hours", -1.0, "Passar 1 hora a menos em redes sociais"),
+    ("netflix_hours", -1.0, "Passar 1 hora a menos em streaming"),
+    ("sleep_hours", +1.0, "Dormir 1 hora a mais por noite"),
+    ("exercise_frequency", +1.0, "Exercitar-se 1 vez a mais por semana"),
+    ("mental_health_rating", +1.0, "Subir 1 ponto na saúde mental autodeclarada"),
+    ("attendance_percentage", +5.0, "Aumentar 5 pontos de frequência"),
+]
+
+linhas = []
+for coluna, passo, descricao in MUDANCAS:
+    limite_inferior = float(base[coluna].min())
+    limite_superior = float(base[coluna].max())
+    novo_valor = min(max(cenario[coluna] + passo, limite_inferior), limite_superior)
+    if novo_valor == cenario[coluna]:
+        continue  # já está no limite do que a base observou
+    efeito = model.scenario_delta(ajustado, cenario, {coluna: novo_valor})
+    linhas.append(
+        {
+            "Mudança": descricao,
+            "Nota prevista": efeito["nota_depois"],
+            "Diferença": efeito["diferenca"],
+        }
+    )
+
+simulacoes = pd.DataFrame(linhas).sort_values("Diferença", ascending=False)
+st.dataframe(
+    simulacoes,
+    hide_index=True,
+    alt="Efeito previsto de alterar cada hábito em uma unidade",
+    column_config={
+        "Diferença": st.column_config.NumberColumn(format="%+.2f"),
+        "Nota prevista": st.column_config.NumberColumn(format="%.2f"),
+    },
+)
+
+if not simulacoes.empty:
+    melhor = simulacoes.iloc[0]
+    st.success(
+        f"Para este perfil, a maior diferença está em: **{melhor['Mudança'].lower()}** "
+        f"({melhor['Diferença']:+.2f} ponto).",
+        icon=":material/trending_up:",
+    )
+
+# --- Curva da variável de maior peso ----------------------------------------
+
+st.subheader("Nota prevista por hora de estudo")
+st.markdown(
+    "Os outros hábitos ficam como estão nos controles; só as horas de estudo "
+    "variam. A linha é reta porque o modelo é linear — e ela achata no topo onde "
+    "a previsão bate em 100."
+)
+
+horas = np.round(
+    np.arange(
+        base["study_hours_per_day"].min(),
+        base["study_hours_per_day"].max() + 0.01,
+        0.5,
+    ),
+    1,
+)
+grade = pd.DataFrame({coluna: valor for coluna, valor in cenario.items()}, index=range(len(horas)))
+grade["study_hours_per_day"] = horas
+grade["Nota prevista"] = model.predict(ajustado, grade)
+grade = grade.rename(columns={"study_hours_per_day": "Horas de estudo por dia"})
+
+eixo_x = alt.X(
+    "Horas de estudo por dia:Q",
+    scale=alt.Scale(domain=[float(horas.min()), float(horas.max())], nice=False),
+)
+eixo_y = alt.Y(
+    "Nota prevista:Q",
+    # Domínio fixo em 0 a 100: é a faixa em que a nota existe, e deixar o Vega
+    # escolher faria a escala mudar de lugar a cada ajuste dos controles.
+    scale=alt.Scale(domain=list(config.SCORE_LIMITS), nice=False),
+)
+
+linha = alt.Chart(grade).mark_line().encode(x=eixo_x, y=eixo_y)
+ponto_atual = (
+    alt.Chart(pd.DataFrame({
+        "Horas de estudo por dia": [cenario["study_hours_per_day"]],
+        "Nota prevista": [nota_prevista],
+    }))
+    .mark_point(size=120, filled=True)
+    .encode(x=eixo_x, y=eixo_y, tooltip=["Horas de estudo por dia", "Nota prevista"])
+)
+
+st.altair_chart(
+    linha + ponto_atual,
+    alt="Nota prevista conforme as horas de estudo por dia, com o aluno simulado marcado",
+)
+st.caption("O ponto marca o aluno dos controles.")
+
+# --- Transparência do modelo -------------------------------------------------
+
+with st.expander("Como este modelo funciona, e onde ele falha"):
+    st.markdown(
+        f"""
+**O modelo.** Regressão linear simples, treinada em {ajustado.metrics['n_treino']}
+alunos e medida em {ajustado.metrics['n_teste']} que ela nunca viu. Escolhida por
+ser explicável: cada hábito tem um coeficiente que se lê em uma frase. Um modelo
+mais forte ganharia alguns pontos de precisão e perderia essa frase, que é o
+produto aqui.
+
+**Desempenho no conjunto de teste.** R² de {ajustado.metrics['r2']},
+erro médio de {ajustado.metrics['mae']} pontos. Chutar sempre a nota média erraria
+{ajustado.metrics['mae_baseline']} pontos — é essa a comparação que importa.
+
+**As variáveis.** Só os sete hábitos que passaram no teste de significância da
+tarefa 3. Idade, dieta, qualidade da internet, trabalho de meio período e
+atividade extracurricular ficaram fora porque não mostraram relação com a nota;
+incluí-las não melhorou o modelo.
+"""
+    )
+
+    st.markdown("**Peso de cada hábito**")
+    tabela_coef = coeficientes.copy()
+    tabela_coef["variavel"] = tabela_coef["variavel"].map(
+        lambda c: config.FEATURE_LABELS.get(c, c)
+    )
+    st.dataframe(
+        tabela_coef.rename(
+            columns={
+                "variavel": "Hábito",
+                "pontos_por_unidade": "Pontos por unidade",
+                "pontos_por_desvio": "Pontos por desvio padrão",
+                "direcao": "Direção",
+            }
+        ),
+        hide_index=True,
+        alt="Coeficientes do modelo por hábito",
+    )
+    st.caption(
+        "“Pontos por unidade” é quanto a nota prevista muda por uma hora (ou um "
+        "ponto da escala). “Pontos por desvio padrão” permite comparar hábitos de "
+        "unidades diferentes: hora de estudo e ponto de frequência não se comparam "
+        "direto."
+    )
+
+    st.markdown(
+        """
+**Onde ele falha.**
+
+- **Efeito teto.** 48 alunos da base tiraram exatamente 100. A previsão é
+  truncada em 100, então o modelo subestima quem já está no topo.
+- **Relação linear.** O modelo supõe que cada hora extra vale o mesmo, da
+  primeira à oitava. Pearson e Spearman concordaram em todas as variáveis, o que
+  sustenta a suposição, mas ela continua sendo uma suposição.
+- **Fora da faixa observada.** Os controles param no mínimo e no máximo da base
+  justamente porque extrapolar seria invenção.
+- **Nada aqui é causa.** Vale repetir: o modelo descreve quem tira nota alta,
+  não o que produz nota alta.
+"""
+    )
+
+st.caption(
+    f"Base: {len(base)} alunos. Análise completa em `reports/`. "
+    "Modelo treinado a cada sessão a partir do CSV, sem artefato salvo."
+)
