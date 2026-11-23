@@ -302,3 +302,32 @@ FEATURE_STEPS = {
     "exercise_frequency": 1.0,
     "mental_health_rating": 1.0,
 }
+
+# Como cada controle mostra o próprio valor. A unidade entra no número porque
+# sem ela "3.70" se lê como 3h70min, que não existe — são horas decimais
+# (3,7 h = 3 h 42 min). Frequência de exercício e saúde mental são contagens
+# inteiras na base, então aparecem sem casa decimal.
+FEATURE_FORMATS = {
+    "study_hours_per_day": "%.1f h/dia",
+    "social_media_hours": "%.1f h/dia",
+    "netflix_hours": "%.1f h/dia",
+    "attendance_percentage": "%.1f%%",
+    "sleep_hours": "%.1f h/noite",
+    "exercise_frequency": "%.0f x/semana",
+    "mental_health_rating": "%.0f de 10",
+}
+
+# --- Paleta -----------------------------------------------------------------
+
+# Um só lugar para a cor, para que as figuras do relatório e os gráficos do app
+# não divirjam. O par azul/vermelho foi validado para daltonismo e contraste
+# (ΔE 21,6 em protanopia, 32,3 em visão normal, contraste acima de 3:1).
+COR_SERIE = "#2a78d6"  # série única e polo positivo
+COR_NEGATIVA = "#e34948"  # polo negativo
+COR_NEUTRA = "#f0efec"  # meio da escala divergente
+COR_SUPERFICIE = "#fcfcfb"
+COR_TINTA = "#0b0b0b"
+COR_TINTA_SECUNDARIA = "#52514e"
+COR_TINTA_FRACA = "#898781"
+COR_GRADE = "#e1e0d9"
+COR_EIXO = "#c3c2b7"

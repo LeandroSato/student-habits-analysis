@@ -92,12 +92,18 @@ for coluna in ajustado.numeric:
         value=float(serie.median()),
         step=float(passo),
         key=f"slider_{coluna}",
+        format=config.FEATURE_FORMATS.get(coluna),
         # Saber o que é típico na base evita simular um perfil que quase não
         # existe sem perceber.
         help=f"Na base: mediana {serie.median():g}, "
         f"metade dos alunos entre {serie.quantile(0.25):g} e "
         f"{serie.quantile(0.75):g}.",
     )
+
+st.sidebar.caption(
+    "As horas são **decimais**, não relógio: 3,7 h/dia são 3 h 42 min, não "
+    "3 h 70 min. É assim que a base registra, com uma casa depois da vírgula."
+)
 
 if st.sidebar.button("Voltar ao aluno mediano", width="stretch"):
     for coluna in ajustado.numeric:
@@ -164,18 +170,21 @@ st.markdown(
     "mudança."
 )
 
+# Cada mudança tem duas escritas: a curta vai no eixo do gráfico, porque rótulo
+# longo é cortado com reticências e "Passar 1 hora a m…" apareceria duas vezes,
+# indistinguível; a longa vai na tabela e na frase de recomendação.
 MUDANCAS = [
-    ("study_hours_per_day", +1.0, "Estudar 1 hora a mais por dia"),
-    ("social_media_hours", -1.0, "Passar 1 hora a menos em redes sociais"),
-    ("netflix_hours", -1.0, "Passar 1 hora a menos em streaming"),
-    ("sleep_hours", +1.0, "Dormir 1 hora a mais por noite"),
-    ("exercise_frequency", +1.0, "Exercitar-se 1 vez a mais por semana"),
-    ("mental_health_rating", +1.0, "Subir 1 ponto na saúde mental autodeclarada"),
-    ("attendance_percentage", +5.0, "Aumentar 5 pontos de frequência"),
+    ("study_hours_per_day", +1.0, "Estudar 1 hora a mais por dia", "Estudo +1 h"),
+    ("social_media_hours", -1.0, "Passar 1 hora a menos em redes sociais", "Redes sociais −1 h"),
+    ("netflix_hours", -1.0, "Passar 1 hora a menos em streaming", "Streaming −1 h"),
+    ("sleep_hours", +1.0, "Dormir 1 hora a mais por noite", "Sono +1 h"),
+    ("exercise_frequency", +1.0, "Exercitar-se 1 vez a mais por semana", "Exercício +1 x"),
+    ("mental_health_rating", +1.0, "Subir 1 ponto na saúde mental autodeclarada", "Saúde mental +1"),
+    ("attendance_percentage", +5.0, "Aumentar 5 pontos de frequência", "Frequência +5 p.p."),
 ]
 
 linhas = []
-for coluna, passo, descricao in MUDANCAS:
+for coluna, passo, descricao, curto in MUDANCAS:
     limite_inferior = float(base[coluna].min())
     limite_superior = float(base[coluna].max())
     novo_valor = min(max(cenario[coluna] + passo, limite_inferior), limite_superior)
@@ -185,29 +194,82 @@ for coluna, passo, descricao in MUDANCAS:
     linhas.append(
         {
             "Mudança": descricao,
+            "Rótulo": curto,
             "Nota prevista": efeito["nota_depois"],
             "Diferença": efeito["diferenca"],
         }
     )
 
 simulacoes = pd.DataFrame(linhas).sort_values("Diferença", ascending=False)
-st.dataframe(
-    simulacoes,
-    hide_index=True,
-    alt="Efeito previsto de alterar cada hábito em uma unidade",
-    column_config={
-        "Diferença": st.column_config.NumberColumn(format="%+.2f"),
-        "Nota prevista": st.column_config.NumberColumn(format="%.2f"),
-    },
-)
 
-if not simulacoes.empty:
+if simulacoes.empty:
+    st.info(
+        "Todos os hábitos já estão no limite observado na base: não há mudança "
+        "a simular para este perfil.",
+        icon=":material/info:",
+    )
+else:
+    # Barras em vez de tabela: a pergunta aqui é "qual é maior", e comprimento
+    # se compara de relance; número em coluna exige ler e subtrair. A tabela
+    # continua disponível logo abaixo, para quem quer o valor exato.
+    ordem = simulacoes["Rótulo"].tolist()
+    eixo_y = alt.Y("Rótulo:N", sort=ordem, title=None)
+    eixo_x = alt.X(
+        "Diferença:Q",
+        title="Pontos de nota a mais",
+        # Folga à direita para o rótulo do maior valor não encostar na borda.
+        scale=alt.Scale(domain=[0, float(simulacoes["Diferença"].max()) * 1.15]),
+    )
+
+    barras = (
+        alt.Chart(simulacoes)
+        .mark_bar(height=18, cornerRadiusEnd=4)
+        .encode(
+            y=eixo_y,
+            x=eixo_x,
+            # A cor marca a direção, mas o sinal também aparece no rótulo:
+            # a leitura não depende de distinguir azul de vermelho.
+            color=alt.condition(
+                alt.datum["Diferença"] >= 0,
+                alt.value(config.COR_SERIE),
+                alt.value(config.COR_NEGATIVA),
+            ),
+            tooltip=["Mudança", "Nota prevista", "Diferença"],
+        )
+    )
+    # A tinta do rótulo segue o tema em que o app está sendo visto: a do tema
+    # claro sumiria no escuro, e vice-versa.
+    tema_escuro = getattr(st.context.theme, "type", "light") == "dark"
+    tinta_rotulo = "#e8e6e1" if tema_escuro else config.COR_TINTA_SECUNDARIA
+
+    rotulos = (
+        alt.Chart(simulacoes)
+        .mark_text(align="left", dx=8, fontSize=12, color=tinta_rotulo)
+        .encode(y=eixo_y, x=eixo_x, text=alt.Text("Diferença:Q", format="+.2f"))
+    )
+
+    st.altair_chart(
+        (barras + rotulos).properties(height=30 * len(simulacoes) + 40),
+        alt="Efeito previsto de alterar cada hábito em uma unidade, em pontos de nota",
+    )
+
     melhor = simulacoes.iloc[0]
     st.success(
         f"Para este perfil, a maior diferença está em: **{melhor['Mudança'].lower()}** "
         f"({melhor['Diferença']:+.2f} ponto).",
         icon=":material/trending_up:",
     )
+
+    with st.expander("Ver os números exatos"):
+        st.dataframe(
+            simulacoes.drop(columns="Rótulo"),
+            hide_index=True,
+            alt="Efeito previsto de alterar cada hábito em uma unidade",
+            column_config={
+                "Diferença": st.column_config.NumberColumn(format="%+.2f"),
+                "Nota prevista": st.column_config.NumberColumn(format="%.2f"),
+            },
+        )
 
 # --- Curva da variável de maior peso ----------------------------------------
 
