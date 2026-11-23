@@ -10,80 +10,6 @@ Resposta do desafio técnico de Analytics Engineer (estágio) da
 > observacional e de um único momento, então nada no repositório afirma que mudar
 > um hábito *provoca* mudança na nota. A seção de limitações detalha.
 
-## Como rodar
-
-Desenvolvido e testado em **Python 3.14.6**. As versões das bibliotecas estão
-travadas em `requirements.txt`.
-
-```powershell
-git clone https://github.com/<seu-usuario>/klubi-student-habits.git
-cd klubi-student-habits
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-No Linux ou macOS, troque a ativação por `source .venv/bin/activate`.
-
-**Gerar a análise** (lê `data/raw/`, grava os relatórios em `reports/`):
-
-```powershell
-python analysis/run_analysis.py
-```
-
-**Abrir o simulador** (app interativo, abre em http://localhost:8501):
-
-```powershell
-streamlit run app/streamlit_app.py
-```
-
-**Rodar os testes:**
-
-```powershell
-pytest
-```
-
-## O simulador
-
-![Tela do simulador de hábitos e nota](reports/figures/app_simulador.jpg)
-
-Ajuste os hábitos de um aluno e o app mostra a nota que o modelo associa a esse
-perfil, com as mudanças ordenadas pelo ganho previsto. Pensado para coordenação
-pedagógica e tutoria: a decisão que ele apoia é **qual hábito levar para a
-conversa primeiro**, e qual aluno chamar antes. O raciocínio completo está em
-[reports/04_modelo.md](reports/04_modelo.md).
-
-## Estrutura do projeto
-
-```
-data/raw/            CSV do desafio, intacto
-data/processed/      base tratada, gerada pela análise
-src/                 módulos de tratamento, estatística e modelo
-tests/               pytest das funções de tratamento
-analysis/            script que roda tudo e grava os relatórios
-app/                 simulador em Streamlit
-reports/             relatório de cada etapa + figuras
-docs/spec.md         escopo, decisões e porquês
-```
-
-O código de tratamento fica em `src/`, separado do script de análise e do app:
-o mesmo tratamento alimenta o relatório e o Streamlit, sem código duplicado.
-
-## Relatórios
-
-| Etapa | Onde |
-|---|---|
-| 1. Exploração inicial e diagnóstico de qualidade | [reports/01_exploracao.md](reports/01_exploracao.md) |
-| 2. Engenharia de dados (cada decisão com o motivo) | [reports/02_engenharia.md](reports/02_engenharia.md) |
-| 3. Análise estatística e ranking de influência | [reports/03_estatistica.md](reports/03_estatistica.md) |
-| 4. Modelo e simulador: que decisão apoia | [reports/04_modelo.md](reports/04_modelo.md) |
-| 5. Visualização, com a leitura de cada gráfico | [reports/05_visualizacao.md](reports/05_visualizacao.md) |
-| 6. Síntese de insights e recomendações | [reports/06_insights.md](reports/06_insights.md) |
-
-Todos os relatórios são **gerados por código**: as frases são montadas a partir
-dos valores calculados, então nenhum número foi digitado à mão e nenhum deles
-pode divergir do CSV.
-
 ## Principais conclusões
 
 ![Horas de estudo contra nota, em dispersão e por faixa](reports/figures/02_variavel_de_maior_impacto.png)
@@ -123,6 +49,16 @@ não como promessa.
 As recomendações completas, com o tamanho de efeito de cada uma, estão em
 [reports/06_insights.md](reports/06_insights.md).
 
+## O simulador
+
+![Tela do simulador de hábitos e nota](reports/figures/app_simulador.jpg)
+
+Ajuste os hábitos de um aluno e o app mostra a nota que o modelo associa a esse
+perfil, com as mudanças ordenadas pelo ganho previsto. Pensado para coordenação
+pedagógica e tutoria: a decisão que ele apoia é **qual hábito levar para a
+conversa primeiro**, e qual aluno chamar antes. O raciocínio completo está em
+[reports/04_modelo.md](reports/04_modelo.md).
+
 ## Limitações
 
 | Limitação | O que ela impede |
@@ -139,3 +75,67 @@ As recomendações completas, com o tamanho de efeito de cada uma, estão em
 comparação sorteado, ou medir hábitos no começo do semestre e nota no fim. Até
 lá, o que esta análise entrega é priorização apoiada em evidência de associação —
 bem mais que palpite, bem menos que prova.
+
+## Como rodar
+
+Desenvolvido e testado em **Python 3.14.6**. As versões das bibliotecas estão
+travadas em `requirements.txt`.
+
+```powershell
+git clone https://github.com/LeandroSato/student-habits-analysis.git
+cd student-habits-analysis
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+No Linux ou macOS, troque a ativação por `source .venv/bin/activate`.
+
+**Gerar a análise** (lê `data/raw/`, grava os relatórios em `reports/`):
+
+```powershell
+python analysis/run_analysis.py
+```
+
+**Abrir o simulador** (app interativo, abre em http://localhost:8501):
+
+```powershell
+streamlit run app/streamlit_app.py
+```
+
+**Rodar os testes:**
+
+```powershell
+pytest
+```
+
+## Estrutura do projeto
+
+```
+data/raw/            CSV do desafio, intacto
+data/processed/      base tratada, gerada pela análise
+src/                 módulos de tratamento, estatística e modelo
+tests/               pytest das funções de tratamento
+analysis/            script que roda tudo e grava os relatórios
+app/                 simulador em Streamlit
+reports/             relatório de cada etapa + figuras
+docs/spec.md         escopo, decisões e porquês
+```
+
+O código de tratamento fica em `src/`, separado do script de análise e do app:
+o mesmo tratamento alimenta o relatório e o Streamlit, sem código duplicado.
+
+## Relatórios
+
+| Etapa | Onde |
+|---|---|
+| 1. Exploração inicial e diagnóstico de qualidade | [reports/01_exploracao.md](reports/01_exploracao.md) |
+| 2. Engenharia de dados (cada decisão com o motivo) | [reports/02_engenharia.md](reports/02_engenharia.md) |
+| 3. Análise estatística e ranking de influência | [reports/03_estatistica.md](reports/03_estatistica.md) |
+| 4. Modelo e simulador: que decisão apoia | [reports/04_modelo.md](reports/04_modelo.md) |
+| 5. Visualização, com a leitura de cada gráfico | [reports/05_visualizacao.md](reports/05_visualizacao.md) |
+| 6. Síntese de insights e recomendações | [reports/06_insights.md](reports/06_insights.md) |
+
+Todos os relatórios são **gerados por código**: as frases são montadas a partir
+dos valores calculados, então nenhum número foi digitado à mão e nenhum deles
+pode divergir do CSV.

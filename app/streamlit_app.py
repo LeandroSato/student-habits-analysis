@@ -60,9 +60,7 @@ erro_medio = ajustado.metrics["mae"]
 
 st.title("Simulador de hábitos e nota")
 st.markdown(
-    "Ajuste os hábitos de um aluno nos controles e veja a nota que o modelo "
-    "associa a esse perfil. Pensado para a conversa de tutoria: **qual hábito "
-    "levar para a mesa primeiro**."
+    "Para a conversa de tutoria: **qual hábito levar para a mesa primeiro**."
 )
 
 st.warning(
@@ -155,19 +153,16 @@ with st.grid(3, gap="medium"):
 
 if nota_prevista >= limite_max:
     st.info(
-        "A previsão bateu no teto de 100. A base tem 48 alunos exatamente em 100, "
-        "e acima disso a nota não existe — o modelo não consegue distinguir "
-        "perfis muito dedicados entre si.",
+        "A previsão bateu no teto de 100 — acima disso a nota não existe, e o "
+        "modelo não distingue perfis muito dedicados entre si.",
         icon=":material/info:",
     )
 
 # --- Onde mexer primeiro -----------------------------------------------------
 
 st.subheader("Onde mexer primeiro")
-st.markdown(
-    "Cada linha é o mesmo aluno com **um** hábito alterado em uma unidade, "
-    "mantendo os outros parados. Ordenado pelo ganho que o modelo associa à "
-    "mudança."
+st.caption(
+    "O mesmo aluno com **um** hábito alterado por vez, mantendo os outros parados."
 )
 
 # Cada mudança tem duas escritas: a curta vai no eixo do gráfico, porque rótulo
@@ -274,11 +269,7 @@ else:
 # --- Curva da variável de maior peso ----------------------------------------
 
 st.subheader("Nota prevista por hora de estudo")
-st.markdown(
-    "Os outros hábitos ficam como estão nos controles; só as horas de estudo "
-    "variam. A linha é reta porque o modelo é linear — e ela achata no topo onde "
-    "a previsão bate em 100."
-)
+st.caption("Só as horas de estudo variam; os outros hábitos ficam como estão.")
 
 horas = np.round(
     np.arange(
@@ -318,7 +309,10 @@ st.altair_chart(
     linha + ponto_atual,
     alt="Nota prevista conforme as horas de estudo por dia, com o aluno simulado marcado",
 )
-st.caption("O ponto marca o aluno dos controles.")
+st.caption(
+    "O ponto marca o aluno dos controles. A linha é reta porque o modelo é "
+    "linear, e achata no topo onde a previsão bate em 100."
+)
 
 # --- Transparência do modelo -------------------------------------------------
 
