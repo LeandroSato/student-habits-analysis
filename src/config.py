@@ -279,6 +279,17 @@ FEATURE_LABELS = {
     "leisure_screen_hours": "Tela de lazer (horas por dia)",
     "study_share": "Fatia do tempo dedicada ao estudo",
     "exam_score": "Nota na prova",
+    # Categóricas e faixas, usadas nas comparações entre grupos.
+    "gender": "Gênero",
+    "diet_quality": "Qualidade da dieta",
+    "internet_quality": "Qualidade da internet",
+    "part_time_job": "Trabalho de meio período",
+    "extracurricular_participation": "Atividade extracurricular",
+    "faixa_estudo": "Faixa de horas de estudo",
+    "faixa_redes_sociais": "Faixa de tempo em redes sociais",
+    "faixa_sono": "Faixa de horas de sono",
+    "faixa_saude_mental": "Faixa de saúde mental",
+    "faixa_frequencia": "Faixa de frequência",
 }
 
 # Passo de cada controle do simulador, na unidade da própria variável.
