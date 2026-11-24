@@ -297,7 +297,10 @@ FEATURE_STEPS = {
     "study_hours_per_day": 0.1,
     "social_media_hours": 0.1,
     "netflix_hours": 0.1,
-    "attendance_percentage": 0.5,
+    # 0,1 e não 0,5: a mediana da base é 84,4, e com passo de 0,5 o controle
+    # não conseguia representá-la — ao mexer, ele pulava para 84,5 e o "aluno
+    # mediano" deixava de ser exatamente o mediano.
+    "attendance_percentage": 0.1,
     "sleep_hours": 0.1,
     "exercise_frequency": 1.0,
     "mental_health_rating": 1.0,
@@ -331,3 +334,9 @@ COR_TINTA_SECUNDARIA = "#52514e"
 COR_TINTA_FRACA = "#898781"
 COR_GRADE = "#e1e0d9"
 COR_EIXO = "#c3c2b7"
+
+# Folga à direita no eixo do gráfico de barras do app, para o rótulo do maior
+# valor caber. Precisa ser generosa: o rótulo é desenhado em pixels e a folga é
+# em unidades do eixo, então numa tela de 390px 15% já não bastavam e o número
+# saía cortado na borda.
+CHART_HEADROOM = 1.3
