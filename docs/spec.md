@@ -92,30 +92,58 @@ legítima quanto a planejada, desde que o motivo esteja escrito.
 | Barras no lugar da tabela em "onde mexer primeiro" | A pergunta ali é "qual é maior", e comprimento se compara de relance. A tabela com os valores exatos continua, um clique abaixo. |
 | Conclusões no topo do README, antes das instruções | Quem avalia dá uns 30 segundos de rolagem antes de decidir se lê o resto, e via `pip install` nesses 30 segundos. |
 
-## Ferramentas: o que entrou e o que ficou de fora
+## Ferramentas usadas
 
-O enunciado deixa a stack livre. O que entrou, entrou para resolver um problema
-concreto; o que ficou de fora está registrado com o motivo, porque "não usei X"
-também é decisão.
+O enunciado deixa a stack livre — inclusive assistentes de IA. Lista completa do
+que foi usado, com o motivo de cada escolha.
 
-| Biblioteca | Para quê, neste projeto |
+### Linguagem
+
+| Linguagem | Motivo |
 |---|---|
-| **pandas** | Base de tudo: leitura, filtro, agrupamento por faixa, estatística descritiva |
-| **numpy** | Operação vetorizada: truncamento da previsão, divisão protegida do `study_share` |
-| **scipy** | Mann-Whitney (tratamento dos nulos) e Kruskal-Wallis (diferença entre grupos) |
-| **scikit-learn** | Regressão linear, split treino/teste, validação cruzada e métricas — só em `src/model.py` |
-| **matplotlib + seaborn** | As 6 figuras dos relatórios, em PNG — só em `src/plots.py` |
-| **streamlit** | O simulador, sem escrever HTML, CSS ou JavaScript |
-| **altair** | Os gráficos dentro do app, onde a escala precisa ser fixada |
-| **pytest** | Os 76 testes das funções de tratamento |
+| **Python 3.14.6** | É a única linguagem em que carregar CSV, rodar teste estatístico, treinar modelo e subir uma interface web cabem no mesmo projeto, sem ponte entre linguagens. Em R a estatística seria melhor e o app pior; em JavaScript, o contrário. |
 
-**Fora, com motivo:** banco de dados (a fonte é um CSV de 73 KB; SQLite seria
-cerimônia sem ganho) · teste de carga/estresse (não há servidor próprio nem
-usuários simultâneos) · teste end-to-end (o app é uma tela só, sem fluxo de
-navegação) · biblioteca de componentes de interface (o Streamlit não aceita, e a
-própria documentação dele desaconselha CSS) · Plotly (não resolveria o PNG
-estático do README e seria uma dependência a mais) · CI/CD e deploy (fora do
-escopo da entrega).
+### Bibliotecas
+
+| Biblioteca | O que é | Motivo de ter entrado |
+|---|---|---|
+| **pandas** | Tabelas em memória | Base de tudo: leitura, filtro, agrupamento por faixa, estatística descritiva. Usada em todos os módulos. |
+| **numpy** | Cálculo com vetores | Operação em coluna inteira sem laço: truncamento da previsão em 0–100 e divisão protegida do `study_share`. |
+| **scipy** | Estatística científica | Os testes de hipótese: Mann-Whitney (decidiu o tratamento dos nulos) e Kruskal-Wallis (diferença entre grupos). Sem ela, restaria comparar médias no olho. |
+| **scikit-learn** | Aprendizado de máquina | Regressão linear, divisão treino/teste, validação cruzada e métricas (R², MAE, RMSE). Só em `src/model.py`. |
+| **matplotlib** | Gráficos estáticos | Gera os PNGs dos relatórios, que precisam aparecer no README do GitHub sem servidor. Só em `src/plots.py`. |
+| **seaborn** | Camada sobre o matplotlib | Resolve em uma linha o mapa de calor e os boxplots, que no matplotlib puro levariam vinte. |
+| **streamlit** | Framework de app web | Transforma script Python em app com controles, sem escrever HTML, CSS ou JavaScript. |
+| **altair** | Gráficos interativos | Os gráficos dentro do app. Entrou porque o gráfico nativo do Streamlit escolhia sozinho um eixo até 180 numa nota que vai a 100. |
+| **pytest** | Framework de teste | Os 76 testes das funções de tratamento, estatística e modelo. Padrão de fato em Python. |
+
+### Assistente de IA
+
+| Ferramenta | Motivo |
+|---|---|
+| **Claude Code** (Anthropic) | Usado em todo o projeto, como o enunciado permite: acelerar a escrita de código, de testes e de texto, e revisar decisões. O que não foi delegado: a escolha técnica de cada etapa e a conferência dos resultados. Todo número do repositório vem de código que roda, e a reprodutibilidade foi testada em clone limpo. |
+
+### Skills
+
+Conjuntos de instruções especializadas acionados dentro do Claude Code.
+
+| Skill | Objetivo | O que mudou de verdade |
+|---|---|---|
+| `developing-with-streamlit` | Construir o app segundo a documentação da versão instalada | Gráfico Vega em vez de matplotlib dentro do app, componentes nativos sem CSS, ícones em vez de emoji |
+| `dataviz` | Decidir forma e cor dos gráficos com método, não por gosto | Paleta validada por script (contraste e daltonismo), escala divergente só onde há polaridade, nada de arco-íris |
+| `ui-ux-pro-max` | Revisar a interface | Pouco: a busca não trouxe nada específico sobre cards de métrica. Aproveitei a regra de escala tipográfica consistente; a solução dos cards veio da documentação do Streamlit |
+
+### O que ficou de fora, e por quê
+
+"Não usei X" também é decisão, então fica registrado:
+
+- **Banco de dados** — a fonte é um CSV de 73 KB; SQLite seria cerimônia sem ganho.
+- **Teste de carga e de estresse** — não há servidor próprio nem usuários simultâneos.
+- **Teste end-to-end** — o app é uma tela só, sem fluxo de navegação a percorrer.
+- **Biblioteca de componentes de interface** — o Streamlit não aceita, e a documentação dele desaconselha CSS.
+- **Plotly** — não resolveria o PNG estático do README e seria uma dependência a mais.
+- **CI/CD e deploy** — fora do escopo da entrega.
+- **Modelos complexos** (boosting, floresta, rede neural) — ganhariam precisão e perderiam a frase "uma hora a mais vale 9,5 pontos", que é o produto do simulador.
 
 ## Estrutura de pastas
 
