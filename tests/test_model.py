@@ -163,3 +163,15 @@ def test_train_funciona_com_variavel_categorica():
     assert ajustado.metrics["r2"] > 0.5
     # One-hot com categoria de referência: 3 categorias geram 2 colunas.
     assert len(coefs) == 3
+
+
+def test_intercept_e_a_nota_prevista_com_tudo_em_zero(df_sintetico):
+    """O intercepto não tem leitura prática, mas entra na conta da previsão."""
+    ajustado = model.train(df_sintetico, numeric=FEATURES, categorical=[])
+
+    zerado = {coluna: 0.0 for coluna in FEATURES}
+    previsto_do_zero = float(model.predict(ajustado, zerado)[0])
+
+    minimo, maximo = config.SCORE_LIMITS
+    esperado = min(max(model.intercept(ajustado), minimo), maximo)
+    assert previsto_do_zero == pytest.approx(esperado, abs=0.01)
