@@ -30,17 +30,18 @@ from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 
 from src import config  # noqa: E402
 
-# Paleta: superfície, tinta e as duas pontas do divergente.
-SUPERFICIE = "#fcfcfb"
-TINTA = "#0b0b0b"
-TINTA_SECUNDARIA = "#52514e"
-TINTA_FRACA = "#898781"
-GRADE = "#e1e0d9"
-EIXO = "#c3c2b7"
+# Paleta: vem do config para que as figuras do relatório e os gráficos do app
+# não divirjam.
+SUPERFICIE = config.COR_SUPERFICIE
+TINTA = config.COR_TINTA
+TINTA_SECUNDARIA = config.COR_TINTA_SECUNDARIA
+TINTA_FRACA = config.COR_TINTA_FRACA
+GRADE = config.COR_GRADE
+EIXO = config.COR_EIXO
 
-AZUL = "#2a78d6"  # série única e polo positivo
-VERMELHO = "#e34948"  # polo negativo
-CINZA_NEUTRO = "#f0efec"  # meio do divergente
+AZUL = config.COR_SERIE  # série única e polo positivo
+VERMELHO = config.COR_NEGATIVA  # polo negativo
+CINZA_NEUTRO = config.COR_NEUTRA  # meio do divergente
 
 DIVERGENTE = LinearSegmentedColormap.from_list(
     "azul_cinza_vermelho", [VERMELHO, CINZA_NEUTRO, AZUL]
