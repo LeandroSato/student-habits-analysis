@@ -21,3 +21,6 @@ Thumbs.db
 
 # Segredos
 .env
+
+# Saida do Playwright MCP (screenshots e snapshots de QA)
+.playwright-mcp/

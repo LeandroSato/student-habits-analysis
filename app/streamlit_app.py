@@ -225,8 +225,12 @@ else:
     eixo_x = alt.X(
         "Diferença:Q",
         title="Pontos de nota a mais",
-        # Folga à direita para o rótulo do maior valor não encostar na borda.
-        scale=alt.Scale(domain=[0, float(simulacoes["Diferença"].max()) * 1.15]),
+        scale=alt.Scale(
+            domain=[
+                0,
+                float(simulacoes["Diferença"].max()) * config.CHART_HEADROOM,
+            ]
+        ),
     )
 
     barras = (
