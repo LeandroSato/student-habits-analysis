@@ -103,10 +103,23 @@ st.sidebar.caption(
     "3 h 70 min. É assim que a base registra, com uma casa depois da vírgula."
 )
 
-if st.sidebar.button("Voltar ao aluno mediano", width="stretch"):
+def voltar_ao_aluno_mediano() -> None:
+    """Repõe todos os controles na mediana da base.
+
+    Precisa ser um callback (`on_click`), e não código no corpo do script: o
+    Streamlit proíbe alterar a chave de um widget depois que ele já foi criado
+    na mesma execução, e os sliders são criados acima. O callback roda **antes**
+    do rerun, quando os widgets ainda não existem, e aí a escrita é permitida.
+    """
     for coluna in ajustado.numeric:
         st.session_state[f"slider_{coluna}"] = float(base[coluna].median())
-    st.rerun()
+
+
+st.sidebar.button(
+    "Voltar ao aluno mediano",
+    width="stretch",
+    on_click=voltar_ao_aluno_mediano,
+)
 
 # --- Resultado ---------------------------------------------------------------
 
