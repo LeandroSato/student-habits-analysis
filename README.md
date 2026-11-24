@@ -4,9 +4,6 @@ A Klubi me mandou um CSV com 1000 alunos: quanto cada um estuda por dia, quanto
 tempo passa em rede social e streaming, quanto dorme, com que frequência se
 exercita, como avalia a própria saúde mental — e a nota que tirou na prova.
 
-A pergunta que eu quis responder não foi "o que tem nessa base". Foi **o que dá
-para fazer com ela na segunda-feira de manhã**.
-
 Teste prático de Analytics Engineer (estágio), por Leandro Sato. O enunciado
 original está [aqui](https://github.com/somosbro/data-analysis-challenge-klubi).
 
