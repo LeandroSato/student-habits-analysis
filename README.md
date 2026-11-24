@@ -119,7 +119,8 @@ tests/               pytest das funções de tratamento
 analysis/            script que roda tudo e grava os relatórios
 app/                 simulador em Streamlit
 reports/             relatório de cada etapa + figuras
-docs/spec.md         escopo, decisões e porquês
+docs/spec.md         escopo, decisões e porquês (inclusive as ferramentas que
+                     ficaram de fora, e o motivo)
 ```
 
 O código de tratamento fica em `src/`, separado do script de análise e do app:
