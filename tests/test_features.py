@@ -116,3 +116,24 @@ def test_build_features_entrega_todas_as_derivadas(df_valido):
     )
     for coluna in esperadas:
         assert coluna in completo.columns
+
+
+def test_derived_columns_lista_so_as_derivadas_que_existem(df_valido):
+    """Sem esta cobertura a função só era exercitada pelo script de análise."""
+    from src.features import derived_columns
+
+    completo = build_features(df_valido)
+    derivadas = derived_columns(completo)
+
+    assert "faixa_estudo" in derivadas
+    assert "leisure_screen_hours" in derivadas
+    assert config.TARGET not in derivadas
+    assert "study_hours_per_day" not in derivadas  # original não é derivada
+
+
+def test_derived_columns_devolve_vazio_em_base_sem_derivadas():
+    import pandas as pd
+
+    from src.features import derived_columns
+
+    assert derived_columns(pd.DataFrame({"study_hours_per_day": [1.0]})) == []

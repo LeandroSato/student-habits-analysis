@@ -945,7 +945,7 @@ def bloco_coeficientes(ajustado) -> str:
     )
 
 
-def bloco_limites_do_modelo(ajustado) -> str:
+def bloco_limites_do_modelo() -> str:
     limite_min, limite_max = config.SCORE_LIMITS
     return "\n".join(
         [
@@ -997,7 +997,7 @@ def etapa_4_modelo(df: pd.DataFrame) -> Path:
             bloco_escolha_do_modelo(comparacao, escolhido),
             bloco_desempenho(ajustado, cv),
             bloco_coeficientes(ajustado),
-            bloco_limites_do_modelo(ajustado),
+            bloco_limites_do_modelo(),
         ],
     )
     return destino

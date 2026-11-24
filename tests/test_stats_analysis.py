@@ -198,3 +198,38 @@ def test_compare_groups_devolve_resumo_por_grupo():
     assert list(resumo["grupo"]) == ["A", "B"]
     assert resumo.iloc[0]["alunos"] == 10
     assert resumo.iloc[0]["media"] < resumo.iloc[1]["media"]
+
+
+# --- Comparação em lote -------------------------------------------------------
+
+
+def test_compare_all_groups_corrige_os_p_valores_em_conjunto():
+    """Várias colunas de uma vez: os p-valores têm de passar por Holm juntos."""
+    df = pd.DataFrame(
+        {
+            "separa": ["A"] * 15 + ["B"] * 15,
+            "nao_separa": ["X", "Y"] * 15,
+            "nota": list(range(40, 55)) + list(range(80, 95)),
+        }
+    )
+
+    resultado = sa.compare_all_groups(
+        df, group_cols=["separa", "nao_separa"], target="nota"
+    )
+
+    assert len(resultado) == 2
+    # Vem ordenado do mais significativo para o menos.
+    assert resultado.iloc[0]["coluna"] == "separa"
+    assert bool(resultado.iloc[0]["significativo"]) is True
+    assert bool(resultado.iloc[1]["significativo"]) is False
+    assert (resultado["p_ajustado"] >= resultado["p_valor"]).all()
+
+
+def test_compare_all_groups_ignora_coluna_que_nao_existe():
+    df = pd.DataFrame({"grupo": ["A", "B"] * 10, "nota": list(range(20))})
+
+    resultado = sa.compare_all_groups(
+        df, group_cols=["grupo", "coluna_inexistente"], target="nota"
+    )
+
+    assert list(resultado["coluna"]) == ["grupo"]
